@@ -1,0 +1,23 @@
+# Render.com Blueprint — deploy with "New > Blueprint Instance"
+# Or connect your GitHub repo and Render auto-detects this file
+
+services:
+  - type: web
+    name: bcm-api
+    runtime: node
+    region: ohio  # US East — closest to Florida
+    plan: free    # Free tier (750 hours/month, sleeps after 15 min idle)
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Set manually in Render dashboard (secret)
+      - key: ALLOWED_ORIGINS
+        value: https://marcomania.online,https://naplesmania.online,https://bonitamania.online,https://ftmyersmania.online,https://sanibelmania.online,https://captivamania.online,https://beachcombersmania.online,https://marcomainia.online
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "30"
+    healthCheckPath: /api/health
