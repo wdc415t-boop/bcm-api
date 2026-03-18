@@ -2,27 +2,29 @@
  * BeachCombersMania API Server v2.0
  * ──────────────────────────────────
  * Full backend with authentication, subscriptions, and AI proxy.
+ * ALL FILES AT ROOT LEVEL — no subdirectories needed.
+ *
+ * Files:
+ *   server.js          ← this file (main app)
+ *   db.js              ← SQLite database + schema
+ *   auth-middleware.js  ← JWT token verification
+ *   auth-routes.js     ← register, login, profile
+ *   subscription.js    ← plans, upgrade, cancel
  *
  * Endpoints:
  *   GET  /api/health              — Health check + stats
- *
  *   POST /api/auth/register       — Create account
  *   POST /api/auth/login          — Log in, get JWT
- *   GET  /api/auth/me             — Profile + subscription info
+ *   GET  /api/auth/me             — Profile + subscription
  *   PUT  /api/auth/me             — Update profile
  *   POST /api/auth/change-password — Change password
- *
- *   GET  /api/subscription        — Current subscription details
- *   GET  /api/subscription/plans  — Available plans & pricing
- *   POST /api/subscription/upgrade — Upgrade plan (Stripe placeholder)
+ *   GET  /api/subscription        — Current subscription
+ *   GET  /api/subscription/plans  — Available plans
+ *   POST /api/subscription/upgrade — Upgrade (Stripe placeholder)
  *   POST /api/subscription/cancel  — Cancel subscription
- *
- *   POST /api/identify            — Shell photo AI ID (Claude Sonnet 4)
- *   POST /api/dining              — Restaurant AI refresh by region
- *   POST /api/boats               — Boat/charter AI refresh by region
- *
- * Deploy to: Render.com
- * DNS: bcm-api-sm35.onrender.com (or api.beachcombersmania.online)
+ *   POST /api/identify            — Shell photo AI ID
+ *   POST /api/dining              — Restaurant AI refresh
+ *   POST /api/boats               — Boat/charter AI refresh
  */
 
 require('dotenv').config();
@@ -34,12 +36,12 @@ const rateLimit = require('express-rate-limit');
 // Initialize database (creates tables on first run)
 const { stmts } = require('./db');
 
-// Auth middleware
-const { optionalAuth, requireAuth, requirePremium } = require('./middleware/auth');
+// Auth middleware (flat — same directory)
+const { optionalAuth, requireAuth, requirePremium } = require('./auth-middleware');
 
-// Route modules
-const authRoutes = require('./routes/auth');
-const subscriptionRoutes = require('./routes/subscription');
+// Route modules (flat — same directory)
+const authRoutes = require('./auth-routes');
+const subscriptionRoutes = require('./subscription');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -64,12 +66,10 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    // In development, allow localhost
     if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
       return callback(null, true);
     }
@@ -89,10 +89,9 @@ const generalLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a moment and try again.' }
 });
 
-// Stricter rate limiting for auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per window
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many login attempts. Please wait 15 minutes.' }
@@ -133,10 +132,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 
 // ═══════════════════════════════════════════════════════════════════
-// AI PROXY ENDPOINTS (existing functionality, now with auth awareness)
+// AI PROXY ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Shared Anthropic proxy function ─────────────────────────────
 async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
   const response = await fetch(ANTHROPIC_URL, {
     method: 'POST',
@@ -163,8 +161,6 @@ async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
 }
 
 // ── Shell Identification ────────────────────────────────────────
-// Free users: 3/day (enforced client-side + server awareness)
-// Premium users: unlimited
 app.post('/api/identify', optionalAuth, async (req, res) => {
   try {
     const { image_b64, region } = req.body;
@@ -173,7 +169,6 @@ app.post('/api/identify', optionalAuth, async (req, res) => {
       return res.status(400).json({ error: 'image_b64 is required' });
     }
 
-    // If user is authenticated, check subscription for enhanced features
     let isPremium = false;
     if (req.user) {
       const sub = stmts.getActiveSubscription.get(req.user.userId);
@@ -182,7 +177,6 @@ app.post('/api/identify', optionalAuth, async (req, res) => {
 
     const regionName = region || 'Marco Island';
 
-    // Premium users get enhanced explainable AI results
     const systemPrompt = isPremium
       ? `You are BeachCombersMania's expert marine biologist specializing in Gulf of America shells, SW Florida — ${regionName}, Naples, Fort Myers Beach, Sanibel, Captiva, Bonita Springs, Ten Thousand Islands. Respond ONLY with valid JSON, no markdown:
 {"name":"Common name","scientific":"Genus species","family":"Family","class":"Gastropoda|Bivalvia|Polyplacophora|Scaphopoda|Cephalopoda","animal":"Living animal body, behavior, feeding (2-3 sentences)","animal_emoji":"emoji","habitat":"Where found","range":"Geographic range","rarity":"Common|Uncommon|Rare","size":"Typical adult size","description":"Visual description color shape texture (2 sentences)","diet":"What it ate","lifespan":"Typical lifespan","fun_facts":["fact1","fact2","fact3"],"historical_uses":"Human uses food tools currency jewelry religion","ecological_role":"Ecosystem role","gulf_america_notes":"Notes about finding on SW Florida Gulf beaches","best_gulf_beaches":["beach1","beach2"],"collecting_tip":"One practical beachcomber tip","florida_found":true,"protected":false,"confidence":"High|Medium|Low","not_a_shell":false,"why_identified":["reason1 — specific visual feature that matched","reason2","reason3"],"similar_species":[{"name":"Similar species","how_to_distinguish":"Key difference"}],"condition":"Whole|Fragment|Half|Juvenile|Sun-bleached|Surf-polished","quality_rating":4}`
@@ -200,8 +194,6 @@ If not a shell set not_a_shell:true.`;
 
     const data = await callAnthropic(systemPrompt, messages, isPremium ? 2000 : 1400);
     const text = (data.content || []).map(b => b.text || '').join('');
-
-    // Parse and validate JSON response
     const result = JSON.parse(text.replace(/```json|```/g, '').trim());
     res.json({ result, premium: isPremium });
 
@@ -215,7 +207,6 @@ If not a shell set not_a_shell:true.`;
 app.post('/api/dining', async (req, res) => {
   try {
     const { region, zip, category } = req.body;
-
     if (!region) {
       return res.status(400).json({ error: 'region is required' });
     }
@@ -242,7 +233,6 @@ app.post('/api/dining', async (req, res) => {
 app.post('/api/boats', async (req, res) => {
   try {
     const { region } = req.body;
-
     if (!region) {
       return res.status(400).json({ error: 'region is required' });
     }
@@ -289,7 +279,7 @@ app.use((err, req, res, next) => {
 
 // ── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🐚 BeachCombersMania API Server v2.0`);
+  console.log(`\n  BeachCombersMania API Server v2.0`);
   console.log(`   Port: ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Allowed Origins: ${allowedOrigins.length} domains`);

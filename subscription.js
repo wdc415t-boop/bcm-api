@@ -5,16 +5,12 @@
  * POST /api/subscription/upgrade — Upgrade plan (Stripe placeholder)
  * POST /api/subscription/cancel  — Cancel subscription
  * GET  /api/subscription/plans   — List available plans & pricing
- *
- * NOTE: Stripe integration will be added in a follow-up session.
- * For now, these endpoints handle the subscription state in SQLite
- * and provide the structure for Stripe to plug into.
  */
 
 const express = require('express');
 const crypto = require('crypto');
-const { stmts } = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { stmts } = require('./db');
+const { requireAuth } = require('./auth-middleware');
 
 const router = express.Router();
 
@@ -88,7 +84,6 @@ const PLANS = {
 // ── GET /api/subscription/plans ─────────────────────────────────
 
 router.get('/plans', (req, res) => {
-  // Return plans without internal Stripe IDs
   const plans = {};
   for (const [key, plan] of Object.entries(PLANS)) {
     plans[key] = {
@@ -117,7 +112,6 @@ router.get('/', requireAuth, (req, res) => {
       });
     }
 
-    // Check expiry
     if (sub.expires_at && new Date(sub.expires_at) < new Date()) {
       stmts.updateSubscriptionStatus.run('expired', sub.id);
       return res.json({
@@ -145,9 +139,6 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // ── POST /api/subscription/upgrade ──────────────────────────────
-// NOTE: This is a PLACEHOLDER. When Stripe is integrated, this will
-// create a Stripe Checkout session and return the checkout URL.
-// For now, it allows manual plan upgrades (useful for testing).
 
 router.post('/upgrade', requireAuth, (req, res) => {
   try {
@@ -160,13 +151,9 @@ router.post('/upgrade', requireAuth, (req, res) => {
       });
     }
 
-    // Check if Stripe is configured
     const stripeConfigured = !!process.env.STRIPE_SECRET_KEY;
 
     if (stripeConfigured) {
-      // TODO: Create Stripe Checkout Session
-      // const session = await stripe.checkout.sessions.create({...});
-      // return res.json({ checkout_url: session.url });
       return res.status(501).json({
         error: 'Stripe checkout coming soon.',
         message: 'Payment integration is being set up. Check back shortly!'
@@ -174,15 +161,11 @@ router.post('/upgrade', requireAuth, (req, res) => {
     }
 
     // ── DEV/TEST MODE: Direct upgrade without payment ───────────
-    // This allows testing the full flow before Stripe is live.
-
-    // Expire any existing active subscriptions
     const existingSub = stmts.getActiveSubscription.get(req.user.userId);
     if (existingSub && existingSub.plan !== 'free') {
       stmts.updateSubscriptionStatus.run('cancelled', existingSub.id);
     }
 
-    // Calculate expiry
     let expires_at = null;
     const now = new Date();
     if (plan === 'monthly') {
@@ -190,7 +173,6 @@ router.post('/upgrade', requireAuth, (req, res) => {
     } else if (plan === 'annual' || plan === 'family') {
       expires_at = new Date(now.setFullYear(now.getFullYear() + 1)).toISOString();
     }
-    // Lifetime = no expiry (null)
 
     const subId = crypto.randomUUID();
     stmts.createSubscription.run(subId, req.user.userId, plan, 'active', expires_at);
@@ -230,7 +212,6 @@ router.post('/cancel', requireAuth, (req, res) => {
       return res.status(400).json({ error: 'Lifetime subscriptions cannot be cancelled.' });
     }
 
-    // Cancel at end of billing period (don't revoke immediately)
     stmts.updateSubscriptionStatus.run('cancelled', sub.id);
 
     console.log(`Subscription cancelled: ${req.user.email} (${sub.plan})`);
