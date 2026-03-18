@@ -1,17 +1,28 @@
 /**
- * BeachCombersMania API Proxy Server
+ * BeachCombersMania API Server v2.0
  * ──────────────────────────────────
- * Hides the Anthropic API key server-side.
- * All 6 regional apps + hub call this server instead of Anthropic directly.
+ * Full backend with authentication, subscriptions, and AI proxy.
  *
  * Endpoints:
- *   POST /api/identify    — Shell photo identification (Claude Sonnet 4)
- *   POST /api/dining      — Restaurant AI refresh by region
- *   POST /api/boats       — Boat/charter AI refresh by region
- *   GET  /api/health      — Health check
+ *   GET  /api/health              — Health check + stats
  *
- * Deploy to: Render.com (free tier)
- * DNS: api.beachcombersmania.online → Render URL
+ *   POST /api/auth/register       — Create account
+ *   POST /api/auth/login          — Log in, get JWT
+ *   GET  /api/auth/me             — Profile + subscription info
+ *   PUT  /api/auth/me             — Update profile
+ *   POST /api/auth/change-password — Change password
+ *
+ *   GET  /api/subscription        — Current subscription details
+ *   GET  /api/subscription/plans  — Available plans & pricing
+ *   POST /api/subscription/upgrade — Upgrade plan (Stripe placeholder)
+ *   POST /api/subscription/cancel  — Cancel subscription
+ *
+ *   POST /api/identify            — Shell photo AI ID (Claude Sonnet 4)
+ *   POST /api/dining              — Restaurant AI refresh by region
+ *   POST /api/boats               — Boat/charter AI refresh by region
+ *
+ * Deploy to: Render.com
+ * DNS: bcm-api-sm35.onrender.com (or api.beachcombersmania.online)
  */
 
 require('dotenv').config();
@@ -19,6 +30,16 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+
+// Initialize database (creates tables on first run)
+const { stmts } = require('./db');
+
+// Auth middleware
+const { optionalAuth, requireAuth, requirePremium } = require('./middleware/auth');
+
+// Route modules
+const authRoutes = require('./routes/auth');
+const subscriptionRoutes = require('./routes/subscription');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -54,23 +75,66 @@ app.use(cors({
     }
     callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400
 }));
 
 // ── Rate limiting ───────────────────────────────────────────────
-const limiter = rateLimit({
+const generalLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'),
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '30'),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please wait a moment and try again.' }
 });
-app.use('/api/', limiter);
+
+// Stricter rate limiting for auth endpoints (prevent brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Please wait 15 minutes.' }
+});
+
+app.use('/api/', generalLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // ── Body parser (50MB for base64 images) ────────────────────────
 app.use(express.json({ limit: '50mb' }));
+
+// ═══════════════════════════════════════════════════════════════════
+// ROUTES
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Health check ────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  const userCount = stmts.countUsers.get();
+  const paidCount = stmts.countPaidUsers.get();
+
+  res.json({
+    status: 'ok',
+    service: 'BeachCombersMania API',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    stats: {
+      total_users: userCount.count,
+      paid_subscribers: paidCount.count
+    }
+  });
+});
+
+// ── Auth routes ─────────────────────────────────────────────────
+app.use('/api/auth', authRoutes);
+
+// ── Subscription routes ─────────────────────────────────────────
+app.use('/api/subscription', subscriptionRoutes);
+
+// ═══════════════════════════════════════════════════════════════════
+// AI PROXY ENDPOINTS (existing functionality, now with auth awareness)
+// ═══════════════════════════════════════════════════════════════════
 
 // ── Shared Anthropic proxy function ─────────────────────────────
 async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
@@ -98,22 +162,10 @@ async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
   return await response.json();
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// ENDPOINTS
-// ═══════════════════════════════════════════════════════════════════
-
-// ── Health check ────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    service: 'BeachCombersMania API',
-    version: '1.0.0',
-    timestamp: new Date().toISOString()
-  });
-});
-
 // ── Shell Identification ────────────────────────────────────────
-app.post('/api/identify', async (req, res) => {
+// Free users: 3/day (enforced client-side + server awareness)
+// Premium users: unlimited
+app.post('/api/identify', optionalAuth, async (req, res) => {
   try {
     const { image_b64, region } = req.body;
 
@@ -121,9 +173,20 @@ app.post('/api/identify', async (req, res) => {
       return res.status(400).json({ error: 'image_b64 is required' });
     }
 
+    // If user is authenticated, check subscription for enhanced features
+    let isPremium = false;
+    if (req.user) {
+      const sub = stmts.getActiveSubscription.get(req.user.userId);
+      isPremium = sub && sub.plan !== 'free' && sub.status === 'active';
+    }
+
     const regionName = region || 'Marco Island';
 
-    const systemPrompt = `You are BeachCombersMania's expert marine biologist specializing in Gulf of America shells, SW Florida — ${regionName}, Naples, Fort Myers Beach, Sanibel, Captiva, Bonita Springs, Ten Thousand Islands. Respond ONLY with valid JSON, no markdown:
+    // Premium users get enhanced explainable AI results
+    const systemPrompt = isPremium
+      ? `You are BeachCombersMania's expert marine biologist specializing in Gulf of America shells, SW Florida — ${regionName}, Naples, Fort Myers Beach, Sanibel, Captiva, Bonita Springs, Ten Thousand Islands. Respond ONLY with valid JSON, no markdown:
+{"name":"Common name","scientific":"Genus species","family":"Family","class":"Gastropoda|Bivalvia|Polyplacophora|Scaphopoda|Cephalopoda","animal":"Living animal body, behavior, feeding (2-3 sentences)","animal_emoji":"emoji","habitat":"Where found","range":"Geographic range","rarity":"Common|Uncommon|Rare","size":"Typical adult size","description":"Visual description color shape texture (2 sentences)","diet":"What it ate","lifespan":"Typical lifespan","fun_facts":["fact1","fact2","fact3"],"historical_uses":"Human uses food tools currency jewelry religion","ecological_role":"Ecosystem role","gulf_america_notes":"Notes about finding on SW Florida Gulf beaches","best_gulf_beaches":["beach1","beach2"],"collecting_tip":"One practical beachcomber tip","florida_found":true,"protected":false,"confidence":"High|Medium|Low","not_a_shell":false,"why_identified":["reason1 — specific visual feature that matched","reason2","reason3"],"similar_species":[{"name":"Similar species","how_to_distinguish":"Key difference"}],"condition":"Whole|Fragment|Half|Juvenile|Sun-bleached|Surf-polished","quality_rating":4}`
+      : `You are BeachCombersMania's expert marine biologist specializing in Gulf of America shells, SW Florida — ${regionName}, Naples, Fort Myers Beach, Sanibel, Captiva, Bonita Springs, Ten Thousand Islands. Respond ONLY with valid JSON, no markdown:
 {"name":"Common name","scientific":"Genus species","family":"Family","class":"Gastropoda|Bivalvia|Polyplacophora|Scaphopoda|Cephalopoda","animal":"Living animal body, behavior, feeding (2-3 sentences)","animal_emoji":"emoji","habitat":"Where found","range":"Geographic range","rarity":"Common|Uncommon|Rare","size":"Typical adult size","description":"Visual description color shape texture (2 sentences)","diet":"What it ate","lifespan":"Typical lifespan","fun_facts":["fact1","fact2","fact3"],"historical_uses":"Human uses food tools currency jewelry religion","ecological_role":"Ecosystem role","gulf_america_notes":"Notes about finding on SW Florida Gulf beaches","best_gulf_beaches":["beach1","beach2"],"collecting_tip":"One practical beachcomber tip","florida_found":true,"protected":false,"confidence":"High|Medium|Low","not_a_shell":false}
 If not a shell set not_a_shell:true.`;
 
@@ -135,12 +198,12 @@ If not a shell set not_a_shell:true.`;
       ]
     }];
 
-    const data = await callAnthropic(systemPrompt, messages, 1400);
+    const data = await callAnthropic(systemPrompt, messages, isPremium ? 2000 : 1400);
     const text = (data.content || []).map(b => b.text || '').join('');
 
     // Parse and validate JSON response
     const result = JSON.parse(text.replace(/```json|```/g, '').trim());
-    res.json({ result });
+    res.json({ result, premium: isPremium });
 
   } catch (err) {
     console.error('Shell ID error:', err.message);
@@ -204,7 +267,15 @@ app.post('/api/boats', async (req, res) => {
 
 // ── 404 handler ─────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found. Available: /api/health, /api/identify, /api/dining, /api/boats' });
+  res.status(404).json({
+    error: 'Endpoint not found.',
+    available: {
+      health: 'GET /api/health',
+      auth: 'POST /api/auth/register, /api/auth/login, GET /api/auth/me',
+      subscription: 'GET /api/subscription, /api/subscription/plans',
+      ai: 'POST /api/identify, /api/dining, /api/boats'
+    }
+  });
 });
 
 // ── Error handler ───────────────────────────────────────────────
@@ -218,7 +289,7 @@ app.use((err, req, res, next) => {
 
 // ── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🐚 BeachCombersMania API Server`);
+  console.log(`\n🐚 BeachCombersMania API Server v2.0`);
   console.log(`   Port: ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Allowed Origins: ${allowedOrigins.length} domains`);
