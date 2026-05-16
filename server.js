@@ -135,7 +135,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'BeachCombersMania API',
-    version: '2.1.1',
+    version: '2.1.2',
     timestamp: new Date().toISOString(),
     stats: {
       total_users: userCount.count,
@@ -174,7 +174,7 @@ async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
   if (!response.ok) {
     const errBody = await response.text();
     console.error(`Anthropic API error ${response.status}:`, errBody);
-    throw new Error(`Anthropic API returned ${response.status}`);
+    throw new Error(`Anthropic API ${response.status}: ${errBody}`);
   }
 
   return await response.json();
@@ -422,7 +422,12 @@ Convert all dollar amounts to integer cents (multiply by 100). Be precise — th
 
   } catch (err) {
     console.error('Settlement parse error:', err.message);
-    res.status(500).json({ error: 'Could not parse settlement document. Ensure it is a valid PDF.' });
+    // Return the actual error for debugging
+    res.status(500).json({ 
+      error: 'Settlement parse failed', 
+      detail: err.message,
+      hint: 'Check server logs for full Anthropic error'
+    });
   }
 });
 
@@ -642,7 +647,7 @@ app.use((err, req, res, next) => {
 
 // ── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n  BeachCombersMania API Server v2.1.1 — with BPM Foundry AI`);
+  console.log(`\n  BeachCombersMania API Server v2.1.2 — with BPM Foundry AI`);
   console.log(`   Port: ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Allowed Origins: ${allowedOrigins.length} domains`);
