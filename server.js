@@ -135,7 +135,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'BeachCombersMania API',
-    version: '2.1.0',
+    version: '2.1.1',
     timestamp: new Date().toISOString(),
     stats: {
       total_users: userCount.count,
@@ -160,7 +160,8 @@ async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'pdfs-2024-09-25'
     },
     body: JSON.stringify({
       model: MODEL,
@@ -641,7 +642,7 @@ app.use((err, req, res, next) => {
 
 // ── Start server ────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n  BeachCombersMania API Server v2.1 — with BPM Foundry AI`);
+  console.log(`\n  BeachCombersMania API Server v2.1.1 — with BPM Foundry AI`);
   console.log(`   Port: ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Allowed Origins: ${allowedOrigins.length} domains`);
