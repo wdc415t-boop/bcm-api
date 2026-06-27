@@ -101,13 +101,18 @@ async function callAnthropic(system, userText, maxTokens = 2400){
   return (d.content && d.content[0] && d.content[0].text) || '';
 }
 
-async function saveLead(email, beach){
+async function saveLead(email, beach, phone){
   if (!GHL_API_KEY || !GHL_LOCATION_ID){ console.warn('[predictor] GHL not configured — lead not saved'); return; }
   const tag = 'predictor_' + beach.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  const tags = [tag, 'predictor_lead'];
+  // phone is only present when the visitor opted in to SMS (consent checked on the form)
+  if (phone) tags.push('predictor_sms_optin');
+  const body = { locationId: GHL_LOCATION_ID, email, tags, source: 'Shelling Predictor - ' + beach };
+  if (phone) body.phone = phone;
   const r = await fetch(`${GHL_BASE}/contacts/upsert`, {
     method: 'POST',
     headers: { 'Authorization':'Bearer '+GHL_API_KEY, 'Version':'2021-07-28', 'Content-Type':'application/json' },
-    body: JSON.stringify({ locationId: GHL_LOCATION_ID, email, tags: [tag, 'predictor_lead'], source: 'Shelling Predictor - ' + beach })
+    body: JSON.stringify(body)
   });
   if (!r.ok){ const t = await r.text().catch(()=> ''); throw new Error('GHL ' + r.status + ' ' + t.slice(0,150)); }
   const data = await r.json().catch(()=> ({}));
@@ -122,14 +127,15 @@ async function saveLead(email, beach){
 // ── POST /api/predictor/forecast ─────────────────────────────────
 router.post('/forecast', predictorLimiter, async (req, res) => {
   try {
-    const { beach, email } = req.body || {};
+    const { beach, email, phone } = req.body || {};
     if (!beach || !email) return res.status(400).json({ error: 'Beach and email are required' });
     if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email' });
     const cfg = BEACHES[beach];
     if (!cfg) return res.status(400).json({ error: 'Invalid beach' });
 
     // 1) Capture the lead — fire-and-forget so a GHL hiccup never blocks the forecast.
-    saveLead(email, beach).catch(e => console.error('[predictor] lead error:', e.message));
+    //    phone is only sent by the form when the visitor checked SMS consent (TCPA/A2P).
+    saveLead(email, beach, (typeof phone === 'string' ? phone.trim() : '')).catch(e => console.error('[predictor] lead error:', e.message));
 
     // 2) Daily cache (one Claude call per beach per day)
     const key = `${beach}|${ymd(new Date())}`;
