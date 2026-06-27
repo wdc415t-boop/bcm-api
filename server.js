@@ -70,17 +70,21 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .map(s => s.trim())
   .filter(Boolean);
 
+// Treat www and non-www as the same origin so a missing "www." in
+// ALLOWED_ORIGINS can never block the site again. Returns the bare-host
+// twin of an origin, e.g. https://www.example.com -> https://example.com.
+const stripWww = (o) => o.replace(/:\/\/www\./i, '://');
+const allowedHosts = new Set(allowedOrigins.map(stripWww));
+
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+    // No Origin header (curl, server-to-server, same-origin) or file:// → allow.
+    if (!origin || origin === 'null') return callback(null, true);
+    // Exact match, or www/non-www twin of an allowed origin.
+    if (allowedOrigins.includes(origin) || allowedHosts.has(stripWww(origin))) {
       return callback(null, true);
     }
     if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
-      return callback(null, true);
-    }
-    // Allow file:// protocol for local HTML testing
-    if (!origin || origin === 'null') {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
