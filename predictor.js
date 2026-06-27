@@ -94,7 +94,7 @@ async function callAnthropic(system, userText, maxTokens = 2400){
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages: [{ role:'user', content: userText }] }),
-    signal: AbortSignal.timeout(30000)
+    signal: AbortSignal.timeout(60000)
   });
   if (!r.ok){ const t = await r.text().catch(()=> ''); throw new Error('Anthropic ' + r.status + ' ' + t.slice(0,150)); }
   const d = await r.json();
@@ -170,7 +170,7 @@ Return JSON exactly in this shape:
 
     let forecast;
     try { forecast = JSON.parse(extractJson(await callAnthropic(system, user, 2400))); }
-    catch (e) { console.error('[predictor] AI error:', e.message); return res.status(502).json({ error: 'Forecast temporarily unavailable — please try again.' }); }
+    catch (e) { console.error('[predictor] AI error:', e.message); return res.status(502).json({ error: 'Forecast temporarily unavailable — please try again.', detail: String(e && e.message || e) }); }
 
     forecast.beach = beach;
     forecast.station = cfg.stationName;
