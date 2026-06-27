@@ -26,7 +26,7 @@ const router = express.Router();
 // ── Reuse the same Anthropic setup as server.js ──────────────────
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
 // ── GoHighLevel (lead capture via REST API — same API the ./ghl CLI wraps) ──
 const GHL_API_KEY = process.env.GHL_API_KEY;
