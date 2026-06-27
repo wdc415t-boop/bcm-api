@@ -47,6 +47,7 @@ const { optionalAuth, requireAuth, requirePremium } = require('./auth-middleware
 // Route modules (flat — same directory)
 const authRoutes = require('./auth-routes');
 const subscriptionRoutes = require('./subscription');
+const predictorRoutes = require('./routes/predictor');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -119,6 +120,7 @@ app.use('/api/', generalLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/bpm/', bpmLimiter);
+app.use('/api/predictor', predictorRoutes);
 
 // ── Body parser (50MB for base64 images and PDFs) ───────────────
 app.use(express.json({ limit: '50mb' }));
