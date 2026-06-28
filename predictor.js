@@ -34,6 +34,15 @@ const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_WORKFLOW_ID = process.env.GHL_PREDICTOR_WORKFLOW_ID || '';
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
+// Custom-field IDs for the emailed teaser (Option A) + the "someday" breadcrumb (Option B).
+// Created in GHL → Settings → Custom Fields (keys: contact.predictor_*).
+const CF_PREDICTOR = {
+  primeScore:   'j0aNcI2newATwZFOryYu', // contact.predictor_prime_score
+  bestWindow:   'Q5PUSW48lp5dbaujqeDF', // contact.predictor_best_window
+  beach:        'CfbBaVJM59pPOCtdcK3n', // contact.predictor_beach
+  forecastDate: 'RfMJsBoxjNp1eNndRMFi', // contact.predictor_forecast_date
+};
+
 // ── Beaches → verified NOAA tide stations + shelling context ─────
 const BEACHES = {
   'Sanibel Island':   { station:'8725362', stationName:'Tarpon Bay, Sanibel Island', lat:26.4454, lng:-82.1243,
@@ -124,6 +133,29 @@ async function saveLead(email, beach, phone){
   }
 }
 
+// Write the teaser values onto the GHL contact so E1 can merge them (Option A).
+// Runs AFTER the forecast exists (cache hit or fresh); fire-and-forget so it never
+// blocks the response, and it completes well before E1 sends (+5 min).
+async function updateLeadForecast(email, beach, forecast){
+  if (!GHL_API_KEY || !GHL_LOCATION_ID || !forecast) return;
+  const top = (forecast.topWindows && forecast.topWindows[0]) || {};
+  const bestWindow = [top.day, top.timeWindow].filter(Boolean).join(', ')
+    + (top.tideCondition ? ` (${top.tideCondition})` : '');
+  const forecastDate = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const customFields = [
+    { id: CF_PREDICTOR.primeScore,   value: String(forecast.primeScore ?? '') },
+    { id: CF_PREDICTOR.bestWindow,   value: bestWindow },
+    { id: CF_PREDICTOR.beach,        value: beach },
+    { id: CF_PREDICTOR.forecastDate, value: forecastDate },
+  ];
+  const r = await fetch(`${GHL_BASE}/contacts/upsert`, {
+    method: 'POST',
+    headers: { 'Authorization':'Bearer '+GHL_API_KEY, 'Version':'2021-07-28', 'Content-Type':'application/json' },
+    body: JSON.stringify({ locationId: GHL_LOCATION_ID, email, customFields })
+  });
+  if (!r.ok){ const t = await r.text().catch(()=> ''); throw new Error('GHL teaser ' + r.status + ' ' + t.slice(0,150)); }
+}
+
 // ── POST /api/predictor/forecast ─────────────────────────────────
 router.post('/forecast', predictorLimiter, async (req, res) => {
   try {
@@ -139,7 +171,11 @@ router.post('/forecast', predictorLimiter, async (req, res) => {
 
     // 2) Daily cache (one Claude call per beach per day)
     const key = `${beach}|${ymd(new Date())}`;
-    if (cache.has(key)) return res.json({ ...cache.get(key), email, cached: true });
+    if (cache.has(key)) {
+      const cached = cache.get(key);
+      updateLeadForecast(email, beach, cached).catch(e => console.error('[predictor] teaser error:', e.message));
+      return res.json({ ...cached, email, cached: true });
+    }
 
     // 3) Real NOAA tides + moon phase
     let preds = [];
@@ -185,6 +221,7 @@ Return JSON exactly in this shape:
     forecast.generatedAt = new Date().toISOString();
 
     cache.set(key, forecast);
+    updateLeadForecast(email, beach, forecast).catch(e => console.error('[predictor] teaser error:', e.message));
     return res.json({ ...forecast, email });
   } catch (e) {
     console.error('[predictor] error:', e);
