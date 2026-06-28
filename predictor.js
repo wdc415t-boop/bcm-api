@@ -133,14 +133,28 @@ async function saveLead(email, beach, phone){
   }
 }
 
+// Convert "19:12" / "19:12–21:12" → 12-hour ("7:12 PM"); leave already-12h strings alone.
+function to12h(s){
+  if (!s) return s;
+  if (/[ap]\.?m/i.test(s)) return s;            // already has AM/PM
+  return s.replace(/(\d{1,2}):(\d{2})/g, (_m, h, mm) => {
+    h = parseInt(h, 10);
+    const ap = h >= 12 ? 'PM' : 'AM';
+    const h12 = (h % 12) || 12;
+    return `${h12}:${mm} ${ap}`;
+  });
+}
+
 // Write the teaser values onto the GHL contact so E1 can merge them (Option A).
 // Runs AFTER the forecast exists (cache hit or fresh); fire-and-forget so it never
 // blocks the response, and it completes well before E1 sends (+5 min).
 async function updateLeadForecast(email, beach, forecast){
   if (!GHL_API_KEY || !GHL_LOCATION_ID || !forecast) return;
   const top = (forecast.topWindows && forecast.topWindows[0]) || {};
-  const bestWindow = [top.day, top.timeWindow].filter(Boolean).join(', ')
-    + (top.tideCondition ? ` (${top.tideCondition})` : '');
+  // Trim Claude's verbose tide note to just the short part before any " — explanation".
+  const tideNote = (top.tideCondition || '').split(/\s[—–-]\s/)[0].trim();
+  const bestWindow = [top.day, to12h(top.timeWindow)].filter(Boolean).join(', ')
+    + (tideNote ? ` (${tideNote})` : '');
   const forecastDate = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
   const customFields = [
     { id: CF_PREDICTOR.primeScore,   value: String(forecast.primeScore ?? '') },
