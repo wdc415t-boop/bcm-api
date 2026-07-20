@@ -55,6 +55,23 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
 
+// ── Scan cost meter (claude-sonnet-4-6: $3/M input, $15/M output) ──
+// Logs one [SCAN-METER] line per /api/identify call (visible in Render logs)
+// and keeps running totals since last server boot (reported at /api/health).
+const SCAN_PRICE = { inPerM: 3, outPerM: 15 };
+const scanMeter = { scans: 0, input_tokens: 0, output_tokens: 0, since: new Date().toISOString() };
+function meterCost(inT, outT) {
+  return (inT * SCAN_PRICE.inPerM + outT * SCAN_PRICE.outPerM) / 1e6;
+}
+function recordScan(usage, userId) {
+  const inT = (usage && usage.input_tokens) || 0;
+  const outT = (usage && usage.output_tokens) || 0;
+  scanMeter.scans += 1;
+  scanMeter.input_tokens += inT;
+  scanMeter.output_tokens += outT;
+  console.log(`[SCAN-METER] ${new Date().toISOString()} user=${userId || 'guest'} in=${inT} out=${outT} cost=$${meterCost(inT, outT).toFixed(4)} boot_total_scans=${scanMeter.scans} boot_total_cost=$${meterCost(scanMeter.input_tokens, scanMeter.output_tokens).toFixed(2)}`);
+}
+
 // ── Validate required env ───────────────────────────────────────
 if (!ANTHROPIC_API_KEY) {
   console.error('FATAL: ANTHROPIC_API_KEY is not set in environment variables.');
@@ -145,6 +162,14 @@ app.get('/api/health', (req, res) => {
     stats: {
       total_users: userCount.count,
       paid_subscribers: paidCount.count
+    },
+    scan_meter: {
+      since_boot: scanMeter.since,
+      scans: scanMeter.scans,
+      input_tokens: scanMeter.input_tokens,
+      output_tokens: scanMeter.output_tokens,
+      est_cost_usd: Number(meterCost(scanMeter.input_tokens, scanMeter.output_tokens).toFixed(4)),
+      est_cost_per_scan_usd: scanMeter.scans ? Number((meterCost(scanMeter.input_tokens, scanMeter.output_tokens) / scanMeter.scans).toFixed(4)) : null
     }
   });
 });
@@ -225,6 +250,7 @@ If not a shell set not_a_shell:true.`;
     }];
 
     const data = await callAnthropic(systemPrompt, messages, isPremium ? 2000 : 1400);
+    recordScan(data.usage, req.user && req.user.userId);
     const text = (data.content || []).map(b => b.text || '').join('');
     const result = JSON.parse(text.replace(/```json|```/g, '').trim());
     res.json({ result, premium: isPremium });
