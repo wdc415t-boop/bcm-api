@@ -59,14 +59,15 @@ function normaliseCatalog(raw) {
 function pipeLine(s) {
   // One line per species. Order matters for the prompt: structure before colour.
   return [s.id, s.name, s.sci, s.type, s.size || '', s.shape || '', s.surface || '', s.colorPattern || '',
-    s.spireHeight || '', s.aperture || '', s.rarity || '', (s.desc || '').replace(/\s+/g, ' ').trim()].join('|');
+    s.spireHeight || '', s.aperture || '', s.rarity || '', (s.desc || '').replace(/\s+/g, ' ').trim(),
+    (s.tells || '').replace(/\s+/g, ' ').trim()].join('|');
 }
 
 function installCatalog(norm, source) {
   catalog.version = norm.version;
   catalog.species = norm.species;
   catalog.byId = new Map(norm.species.map(s => [s.id, s]));
-  catalog.text = 'id|name|scientific|class|size|shape|surface|pattern|spire|aperture|rarity|description\n' +
+  catalog.text = 'id|name|scientific|class|size|shape|surface|pattern|spire|aperture|rarity|description|tells\n' +
     norm.species.map(pipeLine).join('\n');
   catalog.source = source;
   catalog.loadedAt = new Date().toISOString();
@@ -105,9 +106,9 @@ const RULES = `You are BeachCombersMania's shell identification engine for the S
 
 1. OBSERVED. Describe only what is literally visible: overall shape, sculpture (ribs, cords, knobs, spines, cancellate cross-hatching, smooth), spire height, whether the aperture (opening) is visible and what it looks like, colour pattern, apparent condition (whole, worn, fragment, juvenile, sun-bleached). Estimate size ONLY relative to something of known size in the frame (coin, hand, ruler, paper-towel quilting is about 0.4 in / 1 cm per square); otherwise say size is unknown. If the aperture is hidden, say so explicitly.
 
-2. MATCH STRUCTURE BEFORE COLOUR. Compare the observed shape, sculpture, spire and aperture against the catalog fields in that order. Colour and pattern are tie-breakers only; many species vary in colour and worn shells lose it.
+2. MATCH STRUCTURE BEFORE COLOUR. Compare the observed shape, sculpture, spire and aperture against the catalog fields in that order. Colour and pattern are tie-breakers only; many species vary in colour and worn shells lose it. Some records end with a tells column: the specific features that separate that species from its look-alikes. When two or more candidates are close, check each tell against what is actually visible before choosing, and say in why which tells you could and could not see.
 
-3. CANDIDATES. Return the three best catalog species by id with a 0-100 confidence each, best first. Give confidence above 75 only when sculpture, spire AND aperture all agree with the catalog record. If the aperture is hidden, cap every confidence at 70. Known confusions to check deliberately: cancellate cross-hatching with a rounded body is Common Nutmeg (id 71), not Scotch Bonnet (id 13); Banded Tulip (10) has crisp thin spiral lines where True Tulip (9) has blotchy bands; Shark Eye and other moon snails differ by the umbilicus and callus; Calico vs Bay scallop by rib count and mottling; Keyhole vs Arrowhead sand dollar by the slots; juveniles and worn adults can look like other species. If the find is a shell but matches nothing in the catalog well, still give your three closest catalog ids with low confidence and put your best free-text guess in not_in_catalog_guess.
+3. CANDIDATES. Return the three best catalog species by id with a 0-100 confidence each, best first. Give confidence above 75 only when sculpture, spire AND aperture all agree with the catalog record. If the aperture is hidden, cap every confidence at 70. Known confusions to check deliberately: Common Nutmeg (71), Tinted Cantharus (34), Gaudy Cantharus (33) and the small drills (35, 36, 37) all show cross-hatched or ribbed sculpture, so separate them by the base and aperture as their tells describe (Nutmeg: folds on the columella and no siphonal canal; Cantharus and drills: an open siphonal canal and no folds); if the base and aperture are not visible, keep them as co-candidates with modest confidence instead of committing to one. Scotch Bonnet (13) is larger with a thick flaring outer lip and a shield-like parietal callus. Banded Tulip (10) has a few crisp thin unbroken spiral lines where True Tulip (9) has broken, smeared reddish streaks; Shark Eye and other moon snails differ by the umbilicus and callus; Calico vs Bay scallop by rib count and mottling; Keyhole vs Arrowhead sand dollar by the slots; juveniles and worn adults can look like other species. If the find is a shell but matches nothing in the catalog well, still give your three closest catalog ids with low confidence and put your best free-text guess in not_in_catalog_guess.
 
 4. NOT A SHELL. If the photo does not show a seashell, sand dollar, urchin test, egg case, chiton, tusk shell or similar beach specimen, set is_shell to false, still fill observed.notes with what you see, and give three catalog ids with confidence 0.
 
