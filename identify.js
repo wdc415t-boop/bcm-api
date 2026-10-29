@@ -15,7 +15,7 @@
  * Env:
  *   ANTHROPIC_API_KEY   required (already set)
  *   BCM_MODEL           default claude-sonnet-5-5   (claude-opus-5-5 is the no-deploy upgrade)
- *   BCM_CATALOG_URL     default https://beachcombersmania.online/app/assets/MASTER-SHELL-DB.json
+ *   BCM_CATALOG_URL     default https://beachcombersmania.online/assets/MASTER-SHELL-DB.json
  *   BCM_DECIDER         'off' (default) | 'typesafe/jev-1.14' | any OpenRouter decisions model id
  *   OPENROUTER_API_KEY  required when BCM_DECIDER is not 'off'
  *   BCM_EVAL_KEY        optional; requests with header X-BCM-Eval: <key> skip the scan meter
@@ -28,7 +28,7 @@ const path = require('path');
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.BCM_MODEL || 'claude-sonnet-5-5';
-const CATALOG_URL = process.env.BCM_CATALOG_URL || 'https://beachcombersmania.online/app/assets/MASTER-SHELL-DB.json';
+const CATALOG_URL = process.env.BCM_CATALOG_URL || 'https://beachcombersmania.online/assets/MASTER-SHELL-DB.json';
 const DECIDER = (process.env.BCM_DECIDER || 'off').trim();
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const OPENROUTER_DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';

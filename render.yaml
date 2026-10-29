@@ -29,7 +29,7 @@ services:
       - key: BCM_MODEL
         value: claude-sonnet-5-5
       - key: BCM_CATALOG_URL
-        value: https://beachcombersmania.online/app/assets/MASTER-SHELL-DB.json
+        value: https://beachcombersmania.online/assets/MASTER-SHELL-DB.json
       - key: BCM_DECIDER
         value: "off"            # set to typesafe/jev-1.14 after the eval passes
       - key: OPENROUTER_API_KEY
