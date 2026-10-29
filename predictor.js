@@ -33,6 +33,9 @@ const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_WORKFLOW_ID = process.env.GHL_PREDICTOR_WORKFLOW_ID || '';
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+// Phase 2a (2026-10-29): the hub's weekly digest job calls this route with header X-BCM-Eval: <BCM_EVAL_KEY>.
+// Such calls need no email and create no GHL lead; they still share the per-beach daily cache.
+const EVAL_KEY = process.env.BCM_EVAL_KEY || '';
 
 // Custom-field IDs for the emailed teaser (Option A) + the "someday" breadcrumb (Option B).
 // Created in GHL → Settings → Custom Fields (keys: contact.predictor_*).
@@ -174,20 +177,22 @@ async function updateLeadForecast(email, beach, forecast){
 router.post('/forecast', predictorLimiter, async (req, res) => {
   try {
     const { beach, email, phone } = req.body || {};
-    if (!beach || !email) return res.status(400).json({ error: 'Beach and email are required' });
-    if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email' });
+    const isInternal = !!(EVAL_KEY && req.get('x-bcm-eval') === EVAL_KEY);
+    if (!beach || (!email && !isInternal)) return res.status(400).json({ error: 'Beach and email are required' });
+    if (email && !validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email' });
     const cfg = BEACHES[beach];
     if (!cfg) return res.status(400).json({ error: 'Invalid beach' });
 
     // 1) Capture the lead — fire-and-forget so a GHL hiccup never blocks the forecast.
     //    phone is only sent by the form when the visitor checked SMS consent (TCPA/A2P).
-    saveLead(email, beach, (typeof phone === 'string' ? phone.trim() : '')).catch(e => console.error('[predictor] lead error:', e.message));
+    //    Internal (digest) calls carry no email and create no lead.
+    if (!isInternal) saveLead(email, beach, (typeof phone === 'string' ? phone.trim() : '')).catch(e => console.error('[predictor] lead error:', e.message));
 
     // 2) Daily cache (one Claude call per beach per day)
     const key = `${beach}|${ymd(new Date())}`;
     if (cache.has(key)) {
       const cached = cache.get(key);
-      updateLeadForecast(email, beach, cached).catch(e => console.error('[predictor] teaser error:', e.message));
+      if (!isInternal) updateLeadForecast(email, beach, cached).catch(e => console.error('[predictor] teaser error:', e.message));
       return res.json({ ...cached, email, cached: true });
     }
 
@@ -235,7 +240,7 @@ Return JSON exactly in this shape:
     forecast.generatedAt = new Date().toISOString();
 
     cache.set(key, forecast);
-    updateLeadForecast(email, beach, forecast).catch(e => console.error('[predictor] teaser error:', e.message));
+    if (!isInternal) updateLeadForecast(email, beach, forecast).catch(e => console.error('[predictor] teaser error:', e.message));
     return res.json({ ...forecast, email });
   } catch (e) {
     console.error('[predictor] error:', e);
