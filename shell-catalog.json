@@ -1,5 +1,5 @@
 {
-"version": "2026-10-28",
+"version": "2026-10-28b",
 "count": 123,
 "species": [
 {
@@ -922,7 +922,8 @@
 "tip": "Compare shoulder knobs closely against a Knobbed Whelk to tell the two apart.",
 "gulf": "Found alongside true Knobbed Whelks on Gulf beaches.",
 "location": "Sandy Gulf beaches, Marco Island & Naples",
-"imagePath": "assets/img/shells/busycon_carica_eliceans.webp"
+"imagePath": "assets/img/shells/busycon_carica_eliceans.webp",
+"imageCredit": "Photo: RealGatba, CC0 (Wikimedia Commons), Busycon carica, east Florida"
 },
 {
 "id": 33,
@@ -2015,7 +2016,8 @@
 "tip": "Check shell-hash piles after dredging or major storms rather than open sand.",
 "gulf": "Usually arrives on local beaches from deeper offshore water.",
 "location": "Offshore drift, Gulf side",
-"imagePath": "assets/img/shells/cancellaria_reticulata.webp"
+"imagePath": "assets/img/shells/cancellaria_reticulata.webp",
+"imageCredit": "Photo: FWC Fish and Wildlife Research Institute, CC BY 2.0 (Wikimedia Commons), cropped"
 },
 {
 "id": 72,
