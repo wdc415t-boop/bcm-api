@@ -86,7 +86,8 @@
 "colorPattern": "solid",
 "spireHeight": "tall",
 "aperture": "wide",
-"imagePath": "assets/img/shells/triplofusus_giganteus.webp"
+"imagePath": "assets/img/shells/triplofusus_giganteus.webp",
+"tells": "Juveniles are common beach finds at 1 to 4 in and look nothing like the adult: bright orange all over, shouldered whorls with low rounded knobs, spiral cords crossed by axial ribs on the early whorls, a long open siphonal canal and an orange aperture; the lower columella carries 2 to 3 weak oblique folds. Adults are dark brown to orange-brown outside under a flaky periostracum, with the orange showing in the aperture. No spines or frilled varices at any age."
 },
 {
 "id": 4,
@@ -762,7 +763,8 @@
 "colorPattern": "solid",
 "spireHeight": "medium",
 "aperture": "wide",
-"imagePath": "assets/img/shells/phyllonotus_pomum.webp"
+"imagePath": "assets/img/shells/phyllonotus_pomum.webp",
+"tells": "Rounded, 1.5 to 3 in, with three low knobby varices per whorl and crisp frilled spiral sculpture; mottled brown and cream; a dark brown spot on the inner wall beside the columella and often reddish-brown inside the lip."
 },
 {
 "id": 27,
@@ -790,7 +792,8 @@
 "colorPattern": "solid",
 "spireHeight": "medium",
 "aperture": "wide",
-"imagePath": "assets/img/shells/chicoreus_dilectus.webp"
+"imagePath": "assets/img/shells/chicoreus_dilectus.webp",
+"tells": "Three frilly, leaf-like varices per whorl bearing curled fronds; 2 to 3 in; white, cream, pink or brown; long canal with frills; aperture round and white."
 },
 {
 "id": 28,
@@ -817,7 +820,8 @@
 "colorPattern": "solid",
 "spireHeight": "tall",
 "aperture": "wide",
-"imagePath": "assets/img/shells/hexaplex_fulvescens.webp"
+"imagePath": "assets/img/shells/hexaplex_fulvescens.webp",
+"tells": "Heavy shell 3 to 7 in with 6 to 10 raised varices per whorl carrying short hollow spines or frills, crossed by strong spiral cords; cream to tan or pale brown, not bright orange; aperture white to pinkish; canal moderately long and partly closed. Spiny varices separate it from the smooth-ribbed juvenile Horse Conch."
 },
 {
 "id": 29,
