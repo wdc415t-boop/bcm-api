@@ -11,6 +11,8 @@
  *   auth-middleware.js  ← JWT token verification
  *   auth-routes.js     ← register, login, profile
  *   subscription.js    ← plans, upgrade, cancel
+ *   identify.js        ← shell identification (catalog, prompt, Jev decider) — Phase 1
+ *   shell-catalog.json ← bundled species catalog (refreshed daily from the hub)
  *
  * Endpoints:
  *   GET  /api/health                    — Health check + stats
@@ -53,23 +55,32 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-6';
+// Phase 1 (2026-10-28): shell identification lives in identify.js. Model comes from BCM_MODEL
+// (default claude-sonnet-5-5) and is shared with the dining/boats helpers below.
+const identify = require('./identify');
+const MODEL = identify.MODEL;
 
-// ── Scan cost meter (claude-sonnet-4-6: $3/M input, $15/M output) ──
+// ── Scan cost meter (prices per model in identify.js, incl. prompt-cache reads) ──
 // Logs one [SCAN-METER] line per /api/identify call (visible in Render logs)
 // and keeps running totals since last server boot (reported at /api/health).
-const SCAN_PRICE = { inPerM: 3, outPerM: 15 };
-const scanMeter = { scans: 0, input_tokens: 0, output_tokens: 0, since: new Date().toISOString() };
-function meterCost(inT, outT) {
-  return (inT * SCAN_PRICE.inPerM + outT * SCAN_PRICE.outPerM) / 1e6;
+const SCAN_PRICE = identify.priceFor(MODEL);
+const scanMeter = { scans: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: 0, since: new Date().toISOString() };
+function meterCost(inT, outT, cacheRead = 0, cacheWrite = 0, price = SCAN_PRICE) {
+  return (inT * price.inPerM + outT * price.outPerM + cacheRead * (price.cacheReadPerM || 0) + cacheWrite * price.inPerM * 1.25) / 1e6;
 }
-function recordScan(usage, userId) {
+function recordScan(usage, userId, model) {
   const inT = (usage && usage.input_tokens) || 0;
   const outT = (usage && usage.output_tokens) || 0;
+  const cr = (usage && usage.cache_read_input_tokens) || 0;
+  const cw = (usage && usage.cache_creation_input_tokens) || 0;
+  const cost = meterCost(inT, outT, cr, cw, identify.priceFor(model || MODEL));
   scanMeter.scans += 1;
   scanMeter.input_tokens += inT;
   scanMeter.output_tokens += outT;
-  console.log(`[SCAN-METER] ${new Date().toISOString()} user=${userId || 'guest'} in=${inT} out=${outT} cost=$${meterCost(inT, outT).toFixed(4)} boot_total_scans=${scanMeter.scans} boot_total_cost=$${meterCost(scanMeter.input_tokens, scanMeter.output_tokens).toFixed(2)}`);
+  scanMeter.cache_read_tokens += cr;
+  scanMeter.cache_write_tokens += cw;
+  scanMeter.cost_usd += cost;
+  console.log(`[SCAN-METER] ${new Date().toISOString()} user=${userId || 'guest'} model=${model || MODEL} in=${inT} out=${outT} cache_read=${cr} cache_write=${cw} cost=$${cost.toFixed(4)} boot_total_scans=${scanMeter.scans} boot_total_cost=$${scanMeter.cost_usd.toFixed(2)}`);
 }
 
 // ── Validate required env ───────────────────────────────────────
@@ -157,19 +168,22 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'BeachCombersMania API',
-    version: '2.1.2',
+    version: '2.2.0',
     timestamp: new Date().toISOString(),
     stats: {
       total_users: userCount.count,
       paid_subscribers: paidCount.count
     },
+    identify: identify.status(),
     scan_meter: {
       since_boot: scanMeter.since,
       scans: scanMeter.scans,
       input_tokens: scanMeter.input_tokens,
       output_tokens: scanMeter.output_tokens,
-      est_cost_usd: Number(meterCost(scanMeter.input_tokens, scanMeter.output_tokens).toFixed(4)),
-      est_cost_per_scan_usd: scanMeter.scans ? Number((meterCost(scanMeter.input_tokens, scanMeter.output_tokens) / scanMeter.scans).toFixed(4)) : null
+      cache_read_tokens: scanMeter.cache_read_tokens,
+      cache_write_tokens: scanMeter.cache_write_tokens,
+      est_cost_usd: Number(scanMeter.cost_usd.toFixed(4)),
+      est_cost_per_scan_usd: scanMeter.scans ? Number((scanMeter.cost_usd / scanMeter.scans).toFixed(4)) : null
     }
   });
 });
@@ -217,49 +231,10 @@ async function callAnthropic(systemPrompt, messages, maxTokens = 1400) {
 // BCM AI ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Shell Identification ────────────────────────────────────────
-app.post('/api/identify', optionalAuth, async (req, res) => {
-  try {
-    const { image_b64, region } = req.body;
-
-    if (!image_b64) {
-      return res.status(400).json({ error: 'image_b64 is required' });
-    }
-
-    let isPremium = false;
-    if (req.user) {
-      const sub = stmts.getActiveSubscription.get(req.user.userId);
-      isPremium = sub && sub.plan !== 'free' && sub.status === 'active';
-    }
-
-    const regionName = region || 'Marco Island';
-
-    const systemPrompt = isPremium
-      ? `You are BeachCombersMania's expert marine biologist specializing in Gulf of America shells, SW Florida — ${regionName}, Naples, Fort Myers Beach, Sanibel, Captiva, Bonita Springs, Ten Thousand Islands. Respond ONLY with valid JSON, no markdown:
-{"name":"Common name","scientific":"Genus species","family":"Family","class":"Gastropoda|Bivalvia|Polyplacophora|Scaphopoda|Cephalopoda","animal":"Living animal body, behavior, feeding (2-3 sentences)","animal_emoji":"emoji","habitat":"Where found","range":"Geographic range","rarity":"Common|Uncommon|Rare","size":"Typical adult size","description":"Visual description color shape texture (2 sentences)","diet":"What it ate","lifespan":"Typical lifespan","fun_facts":["fact1","fact2","fact3"],"historical_uses":"Human uses food tools currency jewelry religion","ecological_role":"Ecosystem role","gulf_america_notes":"Notes about finding on SW Florida Gulf beaches","best_gulf_beaches":["beach1","beach2"],"collecting_tip":"One practical beachcomber tip","florida_found":true,"protected":false,"confidence":"High|Medium|Low","not_a_shell":false,"why_identified":["reason1 — specific visual feature that matched","reason2","reason3"],"similar_species":[{"name":"Similar species","how_to_distinguish":"Key difference"}],"condition":"Whole|Fragment|Half|Juvenile|Sun-bleached|Surf-polished","quality_rating":4}`
-      : `You are BeachCombersMania's expert marine biologist specializing in Gulf of America shells, SW Florida — ${regionName}, Naples, Fort Myers Beach, Sanibel, Captiva, Bonita Springs, Ten Thousand Islands. Respond ONLY with valid JSON, no markdown:
-{"name":"Common name","scientific":"Genus species","family":"Family","class":"Gastropoda|Bivalvia|Polyplacophora|Scaphopoda|Cephalopoda","animal":"Living animal body, behavior, feeding (2-3 sentences)","animal_emoji":"emoji","habitat":"Where found","range":"Geographic range","rarity":"Common|Uncommon|Rare","size":"Typical adult size","description":"Visual description color shape texture (2 sentences)","diet":"What it ate","lifespan":"Typical lifespan","fun_facts":["fact1","fact2","fact3"],"historical_uses":"Human uses food tools currency jewelry religion","ecological_role":"Ecosystem role","gulf_america_notes":"Notes about finding on SW Florida Gulf beaches","best_gulf_beaches":["beach1","beach2"],"collecting_tip":"One practical beachcomber tip","florida_found":true,"protected":false,"confidence":"High|Medium|Low","not_a_shell":false}
-If not a shell set not_a_shell:true.`;
-
-    const messages = [{
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image_b64 } },
-        { type: 'text', text: 'Identify this sea shell. Return only JSON.' }
-      ]
-    }];
-
-    const data = await callAnthropic(systemPrompt, messages, isPremium ? 2000 : 1400);
-    recordScan(data.usage, req.user && req.user.userId);
-    const text = (data.content || []).map(b => b.text || '').join('');
-    const result = JSON.parse(text.replace(/```json|```/g, '').trim());
-    res.json({ result, premium: isPremium });
-
-  } catch (err) {
-    console.error('Shell ID error:', err.message);
-    res.status(500).json({ error: 'Could not identify this shell. Try a clearer photo in natural light.' });
-  }
-});
+// ── Shell Identification (Phase 1: catalog + feature-first prompt + optional decider) ──
+// The dead "premium" prompt branch is gone: Hostinger-issued tokens never verified here,
+// so isPremium was always false. See identify.js for the full flow.
+app.post('/api/identify', optionalAuth, identify.makeHandler({ recordScan }));
 
 // ── Dining AI Refresh ───────────────────────────────────────────
 app.post('/api/dining', async (req, res) => {

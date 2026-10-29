@@ -1,3 +1,6 @@
 node_modules/
 .env
 .DS_Store
+
+# local install artefact (Render runs npm install itself)
+package-lock.json
