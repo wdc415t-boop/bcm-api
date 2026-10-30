@@ -1,5 +1,5 @@
 {
-"version": "2026-10-29",
+"version": "2026-10-30",
 "count": 123,
 "species": [
 {
@@ -30,7 +30,7 @@
 "spireHeight": "tall",
 "aperture": "wide",
 "imagePath": "assets/img/shells/sinistrofulgur_sinistrum.webp",
-"tells": "Coils to the LEFT: held spire up with the opening facing you, the opening is on the left side. Low knobs on the shoulder, long straight siphonal canal; juveniles creamy with brown axial streaks, adults often plain tan to gray."
+"tells": "Coils to the LEFT: held spire up with the opening facing you, the opening is on the left side. Low knobs on the shoulder, long straight siphonal canal; juveniles creamy with brown axial streaks, adults often plain tan to gray. Juveniles (1 to 2 in) are the common beach find: cream with sharp brown zigzag or axial streaks running DOWN the whorls, an angled shoulder with small knobs, and a long straight canal; they still coil to the left. A Banded Tulip of the same size has thin unbroken lines running AROUND the shell, a rounded shoulder with no knobs, and coils to the right."
 },
 {
 "id": 2,
@@ -263,7 +263,7 @@
 "spireHeight": "tall",
 "aperture": "wide",
 "imagePath": "assets/img/shells/fasciolaria_tulipa.webp",
-"tells": "Larger (3 to 6 in) and heavier; pattern of broken, smeared reddish-brown streaks and squiggles over cream to orange, with fine wavy interrupted spiral lines; surface slightly rough with faint spiral ridges; long siphonal canal."
+"tells": "Larger (3 to 6 in) and heavier; pattern of broken, smeared reddish-brown streaks and squiggles over cream to orange, with fine wavy interrupted spiral lines; surface slightly rough with faint spiral ridges; long siphonal canal. Juveniles share the smooth rounded shoulder and right-hand coil of the Banded Tulip; the streaky, blotchy pattern separates them from the Banded Tulip's clean lines, and the absence of shoulder knobs separates both tulips from young whelks."
 },
 {
 "id": 10,
@@ -293,7 +293,7 @@
 "spireHeight": "tall",
 "aperture": "wide",
 "imagePath": "assets/img/shells/cinctura_lilium.webp",
-"tells": "Smaller (2 to 4 in), smooth and glossy; a few thin, crisp, unbroken dark brown spiral lines drawn around a bluish-gray to cream shell like fine pen lines; no blotchy streaks; long siphonal canal."
+"tells": "Smaller (2 to 4 in), smooth and glossy; a few thin, crisp, unbroken dark brown spiral lines drawn around a bluish-gray to cream shell like fine pen lines; no blotchy streaks; long siphonal canal. Rounded shoulder with no knobs; the dark lines circle the shell horizontally. A juvenile Lightning Whelk of the same size has brown streaks running down the whorls, a knobbed shoulder, and its opening on the left when held spire-up."
 },
 {
 "id": 11,
@@ -440,7 +440,8 @@
 "spireHeight": "none",
 "aperture": "none",
 "imagePath": "assets/img/shells/plicatula_gibbosa.webp",
-"tells": "Thick and heavy for its size with an irregular outline and 5 to 7 coarse folded ribs that read like a paw print; no wing-like ears at the hinge; one valve is cemented to rock or shell so it is often flat or scarred on one side; 0.5 to 1 in; white to gray with reddish-brown rays."
+"tells": "Thick and heavy for its size with an irregular outline and 5 to 7 coarse folded ribs that read like a paw print; no wing-like ears at the hinge; one valve is cemented to rock or shell so it is often flat or scarred on one side; 0.5 to 1 in; white to gray with reddish-brown rays.",
+"imageCredit": "Photo: Bill Cook, BeachCombersMania (Marco Island, 2026-10-29)"
 },
 {
 "id": 16,
@@ -470,7 +471,7 @@
 "spireHeight": "low",
 "aperture": "wide",
 "imagePath": "assets/img/shells/busycotypus_spiratus.webp",
-"tells": "Coils to the right; smooth pear shape with no shoulder knobs, low spire, fine spiral threads, long open canal; relatively thin shell; 3 to 5 in."
+"tells": "Coils to the right; smooth pear shape with no shoulder knobs, low spire, fine spiral threads, long open canal; relatively thin shell; 3 to 5 in. Juveniles are pale and nearly smooth with faint spiral threads and no knobs; tell them from tulips by the much lower spire and the wide, pear-shaped body whorl."
 },
 {
 "id": 17,
@@ -2035,7 +2036,7 @@
 "spireHeight": "medium",
 "aperture": "narrow",
 "imagePath": "assets/img/shells/cancellaria_reticulata.webp",
-"imageCredit": "Photo: FWC Fish and Wildlife Research Institute, CC BY 2.0 (Wikimedia Commons), cropped",
+"imageCredit": "Photo: Bill Cook, BeachCombersMania (Marco Island, 2026-10-28)",
 "tells": "Columella has 2 to 3 strong oblique folds (plaits); inside of the outer lip has strong, even ridges; whorls swollen and rounded with a deep suture; base rounded with only a short notch, no siphonal canal; sculpture is an even beaded lattice of vertical ribs and spiral grooves; 1 to 2 in. No folds on the columella means it is not a Nutmeg."
 },
 {
