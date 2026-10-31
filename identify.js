@@ -340,7 +340,7 @@ function badgeFor({ p1, p2, apertureVisible, agree, isShell }) {
   return level;
 }
 
-function mergeResults({ claude, gate, species }) {
+function mergeResults({ claude, gate, species, opinionTop = null, opinionStrength = 'none' }) {
   const c = claude.parsed;
   const apertureVisibleClaude = c.observed && c.observed.aperture_visible;
   const apertureVisible = (gate && typeof gate.aperture_visible === 'number') ? (gate.aperture_visible >= 0.5) : apertureVisibleClaude;
@@ -365,9 +365,17 @@ function mergeResults({ claude, gate, species }) {
     return { id, p_claude: pc, p_jev: pj, score, why: ck ? ck.why : [] };
   }).sort((a, b) => b.score - a.score).slice(0, 3);
 
+  // Second opinion (Phase 3a.3): agreement with Claude's first choice counts like Jev agreement
+  // for the badge, and a strong agreeing opinion lifts the score a little (never past the
+  // hidden-aperture cap). Disagreement only blocks High; it does not reorder anything here,
+  // because the hint already had its say inside Claude's reasoning.
+  let agree = jevProbs && claudeCands[0] ? (Object.entries(jevProbs).sort((a, b) => b[1] - a[1])[0][0] == claudeCands[0].id) : null;
+  if (agree === null && opinionTop && merged[0] && (opinionStrength === 'strong' || opinionStrength === 'moderate')) {
+    agree = merged[0].id === opinionTop;
+    if (agree && opinionStrength === 'strong') merged[0].score = Math.min(apertureVisible === false ? 0.70 : 0.90, merged[0].score + 0.15);
+  }
   const p1 = merged[0] ? merged[0].score : 0;
   const p2 = merged[1] ? merged[1].score : 0;
-  const agree = jevProbs && claudeCands[0] ? (Object.entries(jevProbs).sort((a, b) => b[1] - a[1])[0][0] == claudeCands[0].id) : null;
   const level = badgeFor({ p1, p2, apertureVisible, agree, isShell });
 
   const candidates = merged.map((m, i) => {
@@ -468,7 +476,11 @@ function makeHandler({ recordScan }) {
         species = await deciderSpecies({ imageB64: image_b64, mediaType, model: deciderModel, classProbs: gate.shell_class.probabilities });
       }
 
-      const merged = mergeResults({ claude, gate: gate && !gate.error ? gate : null, species: species && !species.error ? species : null });
+      const merged = mergeResults({
+        claude, gate: gate && !gate.error ? gate : null, species: species && !species.error ? species : null,
+        opinionTop: opMapped && opMapped.candidates[0] ? opMapped.candidates[0].id : null, opinionStrength: opMapped ? opMapped.strength : 'none'
+      });
+      if (useOpinion) console.log(`[OPINION] model=${opinionModel} used=${!!(op && !op.error)} strength=${opMapped ? opMapped.strength : 'none'} top=${opMapped && opMapped.candidates[0] ? opMapped.candidates[0].name : '-'} agree=${merged.badge.agree} ms=${op ? op.ms : 0} cost=${op && op.cost_usd != null ? op.cost_usd.toFixed(4) : '-'}${op && op.error ? ' error=' + JSON.stringify(op.error.slice(0, 80)) : ''}`);
       const result = legacyResult(merged);
 
       if (!isEval) recordScan(claude.usage, userId, claude.model);

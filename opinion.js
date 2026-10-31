@@ -37,7 +37,7 @@ async function askOpinion({ imageB64, mediaType, model, timeoutMs = 20000 }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENROUTER_API_KEY, 'HTTP-Referer': 'https://beachcombersmania.online', 'X-Title': 'BeachCombersMania' },
       body: JSON.stringify({
-        model, max_tokens: 500, temperature: 0.2, usage: { include: true },
+        model, max_tokens: 1500, temperature: 0.2, usage: { include: true },
         messages: [{ role: 'user', content: [
           { type: 'text', text: PROMPT },
           { type: 'image_url', image_url: { url: `data:${mediaType};base64,${imageB64}` } }
@@ -49,7 +49,7 @@ async function askOpinion({ imageB64, mediaType, model, timeoutMs = 20000 }) {
     const data = await r.json();
     const text = (((data.choices || [])[0] || {}).message || {}).content || '';
     const m = String(text).match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('opinion returned no JSON');
+    if (!m) throw new Error('opinion returned no JSON: ' + JSON.stringify(String(text).slice(0, 120)) + (data.choices && data.choices[0] && data.choices[0].finish_reason ? ' finish=' + data.choices[0].finish_reason : ''));
     const j = JSON.parse(m[0]);
     const conf = Math.max(0, Math.min(100, Number(j.confidence) || 50)) / 100;
     const names = [];
