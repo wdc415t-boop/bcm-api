@@ -261,10 +261,11 @@ function mapToCatalog(web, species, version) {
 }
 
 /** The hint block Claude sees. Neutral by design: evidence from a second observer, not an answer. */
-function hintsText(mapped) {
+function hintsText(mapped, source) {
   if (!mapped || (!mapped.candidates.length && !mapped.unmatched.length)) return '';
   const lines = [];
-  lines.push('VISUAL SEARCH HINTS. An image-matching engine compared this photo against photos on the web and returned the names below, ranked by how strongly the matching pages used each name. Treat them as evidence from a second observer, not as the answer: the names come from web pages, sellers mislabel shells, and the engine does not know which species live on this coast.');
+  if (source === 'opinion') lines.push('SECOND OPINION HINTS. A separate vision model was shown this photo and asked to name the species in free text; its names, mapped onto the catalog, are below. Treat them as evidence from a second observer, not as the answer: that model does not have the catalog or its tells, and it can confuse look-alikes just as you can.');
+  else lines.push('VISUAL SEARCH HINTS. An image-matching engine compared this photo against photos on the web and returned the names below, ranked by how strongly the matching pages used each name. Treat them as evidence from a second observer, not as the answer: the names come from web pages, sellers mislabel shells, and the engine does not know which species live on this coast.');
   lines.push('Use them this way: (a) every hinted catalog species must be considered as a candidate and checked against its tells and what is actually visible; (b) when the photo cannot separate look-alikes (opening hidden, worn, juvenile), a strong hint decides the order among them; (c) a hint that a clearly visible structural feature contradicts loses; (d) if the strongest hints name a species that is not in the catalog, put that name in not_in_catalog_guess and keep the catalog candidates\' confidence modest.');
   if (mapped.candidates.length) {
     lines.push(`Hinted catalog species (match strength: ${mapped.strength}):`);
