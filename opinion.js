@@ -24,8 +24,8 @@ function opinionDefaultModel() { return opinionAvailable() && MODE && MODE !== '
 
 const PROMPT = `You are a malacologist helping a beachcomber. The photo was taken on a Gulf coast beach in Southwest Florida (Marco Island, Naples, Sanibel area). Identify the seashell or beach specimen to species as precisely as you can, from what is visible.
 Reply with JSON only, no prose:
-{"not_a_shell": false, "common_name": "...", "scientific_name": "Genus species", "confidence": 0-100, "alternatives": [{"common_name": "...", "scientific_name": "..."}], "reason": "one sentence"}
-Use the common names shell collectors use. List up to three other species it could be in alternatives, most likely first. If it is not a shell or beach specimen, set not_a_shell true.`;
+{"not_a_shell": false, "common_name": "...", "scientific_name": "Genus species", "confidence": 0-100, "alternatives": [{"common_name": "...", "scientific_name": "..."}], "gulf_coast": true, "reason": "one sentence"}
+Use the common names shell collectors use. List up to three other species it could be in alternatives, most likely first. gulf_coast is whether the species you named occurs on the Florida Gulf coast (false for a shell that is only found elsewhere, such as an Indo-Pacific souvenir). If it is not a shell or beach specimen, set not_a_shell true.`;
 
 async function askOpinion({ imageB64, mediaType, model, timeoutMs = 20000 }) {
   if (!OPENROUTER_API_KEY || !model) return null;
@@ -61,6 +61,8 @@ async function askOpinion({ imageB64, mediaType, model, timeoutMs = 20000 }) {
     }
     return {
       model: data.model || model, not_a_shell: !!j.not_a_shell, names, confidence: Math.round(conf * 100), reason: j.reason ? String(j.reason).slice(0, 300) : '',
+      primary: { common: j.common_name ? String(j.common_name).slice(0, 80) : '', scientific: j.scientific_name ? String(j.scientific_name).slice(0, 80) : '' },
+      gulf_coast: typeof j.gulf_coast === 'boolean' ? j.gulf_coast : null,
       cost_usd: data.usage && typeof data.usage.cost === 'number' ? data.usage.cost : null, ms: Date.now() - started
     };
   } catch (e) {
@@ -69,10 +71,30 @@ async function askOpinion({ imageB64, mediaType, model, timeoutMs = 20000 }) {
   } finally { clearTimeout(t); }
 }
 
+/**
+ * Phase 3b: is the second opinion naming a species the guide does not carry?
+ * True when its primary common AND scientific names map to no catalog species, it is confident,
+ * and Claude's own first choice is not confident (or Claude flagged not_in_catalog_guess itself).
+ */
+function offGuide(op, species, version, claudeTopConf, claudeGuess) {
+  if (!op || op.error || op.not_a_shell || !op.primary) return null;
+  const prim = [op.primary.common, op.primary.scientific].filter(Boolean).map(n => ({ name: n, score: 1.2 }));
+  if (!prim.length) return null;
+  const m = mapToCatalog({ entities: prim, best_guess: [], page_titles: [] }, species, version);
+  if (!m || m.candidates.length) return null;                 // a primary name is in the guide
+  if ((op.confidence || 0) < 60) return null;                 // the opinion itself is unsure
+  if ((claudeTopConf || 0) >= 75 && !claudeGuess) return null; // Claude is sure it is a guide species
+  return {
+    name: op.primary.common || op.primary.scientific, scientific: op.primary.scientific || '',
+    confidence: op.confidence, reason: op.reason || '', gulf_coast: op.gulf_coast, source: 'second opinion',
+    claude_guess: claudeGuess || null
+  };
+}
+
 /** Map the opinion's names onto the catalog using the Web Detection mapper. */
 function mapOpinion(op, species, version) {
   if (!op || op.error) return null;
   return mapToCatalog({ entities: op.names, best_guess: [], page_titles: [] }, species, version);
 }
 
-module.exports = { opinionAvailable, opinionDefaultModel, askOpinion, mapOpinion, PROMPT };
+module.exports = { opinionAvailable, opinionDefaultModel, askOpinion, mapOpinion, offGuide, PROMPT };
