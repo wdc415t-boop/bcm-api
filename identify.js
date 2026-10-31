@@ -480,11 +480,11 @@ function makeHandler({ recordScan }) {
         claude, gate: gate && !gate.error ? gate : null, species: species && !species.error ? species : null,
         opinionTop: opMapped && opMapped.candidates[0] ? opMapped.candidates[0].id : null, opinionStrength: opMapped ? opMapped.strength : 'none'
       });
-      if (useOpinion) console.log(`[OPINION] model=${opinionModel} used=${!!(op && !op.error)} strength=${opMapped ? opMapped.strength : 'none'} top=${opMapped && opMapped.candidates[0] ? opMapped.candidates[0].name : '-'} agree=${merged.badge.agree} off_guide=${offGuide ? JSON.stringify(offGuide.name) : '-'} ms=${op ? op.ms : 0} cost=${op && op.cost_usd != null ? op.cost_usd.toFixed(4) : '-'}${op && op.error ? ' error=' + JSON.stringify(op.error.slice(0, 80)) : ''}`);
-      const result = legacyResult(merged);
       // Phase 3b: a confident second opinion naming a species the guide does not carry.
       const offGuide = useOpinion ? opinion.offGuide(op, catalog.species, catalog.version,
         merged.candidates[0] ? merged.candidates[0].p_claude : 0, merged.not_in_catalog_guess) : null;
+      if (useOpinion) console.log(`[OPINION] model=${opinionModel} used=${!!(op && !op.error)} strength=${opMapped ? opMapped.strength : 'none'} top=${opMapped && opMapped.candidates[0] ? opMapped.candidates[0].name : '-'} agree=${merged.badge.agree} off_guide=${offGuide ? JSON.stringify(offGuide.name) : '-'} ms=${op ? op.ms : 0} cost=${op && op.cost_usd != null ? op.cost_usd.toFixed(4) : '-'}${op && op.error ? ' error=' + JSON.stringify(op.error.slice(0, 80)) : ''}`);
+      const result = legacyResult(merged);
 
       if (!isEval) recordScan(claude.usage, userId, claude.model);
       else console.log(`[EVAL] model=${claude.model} decider=${useDecider ? deciderModel : 'off'} vision=${useVision ? (mapped && mapped.candidates[0] ? mapped.candidates[0].name + '/' + mapped.strength : (web && web.error ? 'error' : 'none')) : 'off'} opinion=${useOpinion ? (opMapped && opMapped.candidates[0] ? opMapped.candidates[0].name + '/' + opMapped.strength : (op && op.error ? 'error' : 'none')) : 'off'} top=${result.name} badge=${merged.badge.level} ms=${Date.now() - started}`);
