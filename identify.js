@@ -19,11 +19,14 @@
  *   BCM_DECIDER         'off' (default) | 'typesafe/jev-1.14' | any OpenRouter decisions model id
  *   OPENROUTER_API_KEY  required when BCM_DECIDER is not 'off'
  *   BCM_EVAL_KEY        optional; requests with header X-BCM-Eval: <key> skip the scan meter
- *                       and may pass {variant:'legacy'|'new', model, decider} overrides.
+ *                       and may pass {variant:'legacy'|'new', model, decider, vision} overrides.
+ *   GOOGLE_VISION_API_KEY + BCM_VISION='on'  Phase 3a (2026-10-30): Google Web Detection runs first
+ *                       and its catalog-mapped names go to Claude as hints (vision.js). Default off.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const vision = require('./vision');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -158,7 +161,7 @@ const OUTPUT_SCHEMA = {
 
 const ALLOWED_MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-async function callClaudeIdentify({ imageB64, mediaType, region, model }) {
+async function callClaudeIdentify({ imageB64, mediaType, region, model, hints }) {
   const body = {
     model,
     max_tokens: 3000,
@@ -174,7 +177,8 @@ async function callClaudeIdentify({ imageB64, mediaType, region, model }) {
       role: 'user',
       content: [
         { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageB64 } },
-        { type: 'text', text: `Beach region selected by the user: ${region}. Identify this find against the catalog.` }
+        { type: 'text', text: `Beach region selected by the user: ${region}. Identify this find against the catalog.` },
+        ...(hints ? [{ type: 'text', text: hints }] : [])
       ]
     }]
   };
@@ -436,10 +440,17 @@ function makeHandler({ recordScan }) {
         return res.json({ result: out.parsed, variant: 'legacy', model: out.model, usage: out.usage, ms: Date.now() - started });
       }
 
+      // Phase 3a: Google Web Detection first (when on), mapped to catalog names, handed to Claude as hints.
+      const visionWanted = isEval && typeof req.body.vision === 'string' ? req.body.vision === 'on' : vision.visionDefaultOn();
+      const useVision = visionWanted && vision.visionAvailable();
+      const web = useVision ? await vision.webDetect({ imageB64: image_b64 }) : null;
+      const mapped = web && !web.error ? vision.mapToCatalog(web, catalog.species, catalog.version) : null;
+      const hints = vision.hintsText(mapped);
+
       // Decider only sees jpeg/png (Jev rejects webp). Gate runs in parallel with Claude.
       const useDecider = deciderActive(deciderModel) && (mediaType === 'image/jpeg' || mediaType === 'image/png');
       const gateP = useDecider ? deciderGate({ imageB64: image_b64, mediaType, model: deciderModel }) : Promise.resolve(null);
-      const claudeP = callClaudeIdentify({ imageB64: image_b64, mediaType, region: regionName, model });
+      const claudeP = callClaudeIdentify({ imageB64: image_b64, mediaType, region: regionName, model, hints });
 
       const [gate, claude] = await Promise.all([gateP, claudeP]);
 
@@ -452,7 +463,7 @@ function makeHandler({ recordScan }) {
       const result = legacyResult(merged);
 
       if (!isEval) recordScan(claude.usage, userId, claude.model);
-      else console.log(`[EVAL] model=${claude.model} decider=${useDecider ? deciderModel : 'off'} top=${result.name} badge=${merged.badge.level} ms=${Date.now() - started}`);
+      else console.log(`[EVAL] model=${claude.model} decider=${useDecider ? deciderModel : 'off'} vision=${useVision ? (mapped && mapped.candidates[0] ? mapped.candidates[0].name + '/' + mapped.strength : (web && web.error ? 'error' : 'none')) : 'off'} top=${result.name} badge=${merged.badge.level} ms=${Date.now() - started}`);
 
       res.json({
         result,
@@ -470,6 +481,12 @@ function makeHandler({ recordScan }) {
           species_pool: species && species.pool, cost_usd: ((gate && gate.cost_usd) || 0) + ((species && species.cost_usd) || 0),
           ms: ((gate && gate.ms) || 0) + ((species && species.ms) || 0), error: (gate && gate.error) || (species && species.error) || null
         } : { model: 'off', used: false },
+        vision: useVision ? {
+          used: !!(web && !web.error), strength: mapped ? mapped.strength : 'none',
+          candidates: mapped ? mapped.candidates : [], unmatched: mapped ? mapped.unmatched : [],
+          best_guess: web && web.best_guess ? web.best_guess : [], ms: web ? web.ms : 0, cost_usd: web && !web.error ? vision.COST_USD : 0,
+          error: (web && web.error) || null
+        } : { used: false },
         model: claude.model,
         catalog_version: catalog.version,
         usage: claude.usage,
@@ -488,6 +505,7 @@ function status() {
   return {
     model: MODEL,
     decider: deciderActive(DECIDER) ? DECIDER : 'off',
+    vision: { available: vision.visionAvailable(), default: vision.visionDefaultOn() ? 'on' : 'off' },
     catalog: { version: catalog.version, species: catalog.species.length, source: catalog.source, loaded_at: catalog.loadedAt, last_error: catalog.lastError }
   };
 }

@@ -1,11 +1,12 @@
 {
   "name": "bcm-api",
   "version": "2.0.0",
-  "description": "BeachCombersMania API — Auth, subscriptions, and AI shell identification",
+  "description": "BeachCombersMania API \u2014 Auth, subscriptions, and AI shell identification",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test vision.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
