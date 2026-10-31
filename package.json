@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test vision.test.js"
+    "test": "node --test vision.test.js identify.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
