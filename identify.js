@@ -22,11 +22,14 @@
  *                       and may pass {variant:'legacy'|'new', model, decider, vision} overrides.
  *   GOOGLE_VISION_API_KEY + BCM_VISION='on'  Phase 3a (2026-10-30): Google Web Detection runs first
  *                       and its catalog-mapped names go to Claude as hints (vision.js). Default off.
+ *   BCM_OPINION='<openrouter model>'  Phase 3a.2 (2026-10-31): a second vision model names the species
+ *                       and its catalog-mapped names go to Claude as hints (opinion.js). Default off.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const vision = require('./vision');
+const opinion = require('./opinion');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -443,9 +446,15 @@ function makeHandler({ recordScan }) {
       // Phase 3a: Google Web Detection first (when on), mapped to catalog names, handed to Claude as hints.
       const visionWanted = isEval && typeof req.body.vision === 'string' ? req.body.vision === 'on' : vision.visionDefaultOn();
       const useVision = visionWanted && vision.visionAvailable();
-      const web = useVision ? await vision.webDetect({ imageB64: image_b64 }) : null;
+      const opinionModel = isEval && typeof req.body.opinion === 'string' ? (req.body.opinion === 'off' ? null : req.body.opinion) : opinion.opinionDefaultModel();
+      const useOpinion = !!opinionModel && opinion.opinionAvailable();
+      const [web, op] = await Promise.all([
+        useVision ? vision.webDetect({ imageB64: image_b64 }) : Promise.resolve(null),
+        useOpinion ? opinion.askOpinion({ imageB64: image_b64, mediaType, model: opinionModel }) : Promise.resolve(null)
+      ]);
       const mapped = web && !web.error ? vision.mapToCatalog(web, catalog.species, catalog.version) : null;
-      const hints = vision.hintsText(mapped);
+      const opMapped = op && !op.error ? opinion.mapOpinion(op, catalog.species, catalog.version) : null;
+      const hints = [vision.hintsText(mapped, 'web'), vision.hintsText(opMapped, 'opinion')].filter(Boolean).join('\n\n');
 
       // Decider only sees jpeg/png (Jev rejects webp). Gate runs in parallel with Claude.
       const useDecider = deciderActive(deciderModel) && (mediaType === 'image/jpeg' || mediaType === 'image/png');
@@ -463,7 +472,7 @@ function makeHandler({ recordScan }) {
       const result = legacyResult(merged);
 
       if (!isEval) recordScan(claude.usage, userId, claude.model);
-      else console.log(`[EVAL] model=${claude.model} decider=${useDecider ? deciderModel : 'off'} vision=${useVision ? (mapped && mapped.candidates[0] ? mapped.candidates[0].name + '/' + mapped.strength : (web && web.error ? 'error' : 'none')) : 'off'} top=${result.name} badge=${merged.badge.level} ms=${Date.now() - started}`);
+      else console.log(`[EVAL] model=${claude.model} decider=${useDecider ? deciderModel : 'off'} vision=${useVision ? (mapped && mapped.candidates[0] ? mapped.candidates[0].name + '/' + mapped.strength : (web && web.error ? 'error' : 'none')) : 'off'} opinion=${useOpinion ? (opMapped && opMapped.candidates[0] ? opMapped.candidates[0].name + '/' + opMapped.strength : (op && op.error ? 'error' : 'none')) : 'off'} top=${result.name} badge=${merged.badge.level} ms=${Date.now() - started}`);
 
       res.json({
         result,
@@ -487,6 +496,12 @@ function makeHandler({ recordScan }) {
           best_guess: web && web.best_guess ? web.best_guess : [], ms: web ? web.ms : 0, cost_usd: web && !web.error ? vision.COST_USD : 0,
           error: (web && web.error) || null
         } : { used: false },
+        opinion: useOpinion ? {
+          model: opinionModel, used: !!(op && !op.error), strength: opMapped ? opMapped.strength : 'none',
+          names: op && op.names ? op.names.map(n => n.name) : [], not_a_shell: !!(op && op.not_a_shell), confidence: op && op.confidence,
+          candidates: opMapped ? opMapped.candidates : [], unmatched: opMapped ? opMapped.unmatched : [],
+          ms: op ? op.ms : 0, cost_usd: op && op.cost_usd, error: (op && op.error) || null
+        } : { used: false },
         model: claude.model,
         catalog_version: catalog.version,
         usage: claude.usage,
@@ -506,6 +521,7 @@ function status() {
     model: MODEL,
     decider: deciderActive(DECIDER) ? DECIDER : 'off',
     vision: { available: vision.visionAvailable(), default: vision.visionDefaultOn() ? 'on' : 'off' },
+    opinion: { available: opinion.opinionAvailable(), default: opinion.opinionDefaultModel() || 'off' },
     catalog: { version: catalog.version, species: catalog.species.length, source: catalog.source, loaded_at: catalog.loadedAt, last_error: catalog.lastError }
   };
 }
