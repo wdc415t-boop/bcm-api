@@ -1,10 +1,10 @@
-# BCM Phase 3g — App: sheets above the menu bar on iPhone + Dining comes back where you left off (2026-11-01)
+# BCM Phase 3g — App: sheets above the menu bar on iPhone, Dining resumes where you left off, dining data fixes, honest scan text (2026-11-01)
 
-Two iPhone reports from Nancy (2026-11-01), both in the app (`public_html/app/index.html`). The Excursion Reel **viewer** (`reel/index.php`, Phase 3f) is untouched.
+Nancy's 2026-11-01 reports, all in the app (`public_html/app/index.html`). The Excursion Reel **viewer** (`reel/index.php`, Phase 3f) is untouched.
 
 | File | Destination | What |
 |---|---|---|
-| `public_html/app/index.html` | `public_html/app/index.html` (**overwrite**) | Parts A and B below. 3177444 bytes. |
+| `public_html/app/index.html` | `public_html/app/index.html` (**overwrite**) | Parts A–D below. 3,177,293 bytes. |
 | `public_html/app/index.backup-2026-11-01-3d.html` | (local only — restore copy) | Byte copy of the Phase 3d file that is live (3,173,462 bytes). Not uploaded; copy over `index.html` to roll back. |
 
 Nothing else changes: no APK rebuild (the APK wraps the live PWA), no `_reel.php`, no catalog, no hub pages.
@@ -27,13 +27,32 @@ Nothing else changes: no APK rebuild (the APK wraps the live PWA), no `_reel.php
 
 Implementation note: `RestaurantsScreen` is defined inside the root component, so React remounts it whenever the shell re-renders (several times at start-up). The restore therefore reads the live saved record on every mount while the resume is pending, and the resume is only marked finished when the user navigates to another screen.
 
+## Part C — dining / airport data fixes (Nancy's list, each verified from Bill's Mac on 2026-11-01)
+
+| Entry | Was | Now |
+|---|---|---|
+| Doreen's Cup of Joe | `doreenscupofjoe.com` (owner's Cloudflare firewall blocks visitors); address 1018 N Collier, phone 394-7755 — both wrong | website `doreenscupofjoemarco.com` (their new site); **267 N Collier Blvd**, **(239) 394-2600** (Yelp, TripAdvisor and their site agree) |
+| Marco Island Brewery | `marcobrewery.com` → GoDaddy parked | `marcoislandbrewery.com` |
+| Fin Bistro | `finbistro.com/home` → 404 | `finbistro.com` (works) |
+| Osteria Capri (2 copies) | `osteriacapri.com` — server never answers; address 208 Capri Blvd / 970-5952 wrong | website removed; **387 Capri Blvd**, **(239) 970-5721** (their Facebook, Instagram, OpenTable) |
+| Southwest Florida Intl (RSW) (6 copies) | no website | `flylcpa.com` |
+| Marco Island Executive Airport | `marcoislandairport.com` → GoDaddy parked; phone 394-3355 | collier.gov Airport Authority page; **(239) 394-8187** (county) |
+| Caxambas Park Marina | listed under Dining as "Fresh Seafood" with no website/menu — it is a county boat ramp, not a restaurant | **removed from Dining**. The Boats-tab "Caxambas Park Boat Launch" entry is unchanged. |
+
+Not changed, flagged for a later data audit: three of these seven had wrong addresses/phones, not just dead links — the dining data was AI-generated and has never been audited. The Brewery's phone (app 394-2739, Yelp 970-0461) is unverified and left as is.
+
+## Part D — honest scan-wait text
+
+The identify screen said "Consulting the Gulf… / Our AI marine biologist is analyzing your shell". Nancy asked whether that is what happens; it is not. Now: **"Checking the Shell Guide… / Cook AI is matching your photo against the BeachCombersMania Shell Guide, then getting a second opinion"** — which is what `/api/identify` does (catalog-grounded Claude call, Google Vision hints, OpenRouter second opinion).
+
 ## Local verification (headless Chromium, iPhone 390×844, React vendored, network to CDN/API blocked)
 
-17 checks, all passing (`node --check` clean on both inline scripts):
+18 checks, all passing (re-run after Parts C–D) (`node --check` clean on both inline scripts):
 - Fresh launch → Home; resume record written.
 - Planted Dining record (scrollTop 700) → launches on Dining, `#bcm-scroll` at 700; still 700 after 1.2s of start-up re-renders.
 - Scroll to 1200 + background → record now 1200. Stale (4h) record → Home. Camera record → Home.
 - Dining → Home → Dining starts at the top (resume consumed).
+- Dining list renders with the Part C data: Doreen's at 267 N Collier, no Caxambas Park Marina card, Brewery and Fin Bistro present, 21 cards with Call buttons, no page errors.
 - Excursion Reel sheet mounted *inside* the scroller: overlay is a direct child of `<body>`, `fixed` z 60, sheet bottom edge at 844 = viewport bottom; a hit-test 20px above the screen bottom lands in the sheet, not the menu bar. No page errors.
 
 ## Not done / later
@@ -44,4 +63,4 @@ Implementation note: `RestaurantsScreen` is defined inside the root component, s
 
 ## Upload
 
-Hostinger web hosting, account `u605954531`, domain `beachcombersmania.online`, document root `public_html`. TUS upload via `hosting_files_generate-upload-url` (create 201, patch 204) to `app/index.html?override=true`, clear the Hostinger cache, read the live file back: expect **3177444 bytes** with the Phase 3g comment. Status: _pending Bill's "Yes, upload"._
+Hostinger web hosting, account `u605954531`, domain `beachcombersmania.online`, document root `public_html`. TUS upload via `hosting_files_generate-upload-url` (create 201, patch 204) to `app/index.html?override=true`, clear the Hostinger cache, read the live file back: expect **3,177,293 bytes** with the Phase 3g comment. Status: _pending Bill's "Yes, upload"._
