@@ -108,7 +108,7 @@ setInterval(refreshCatalog, 24 * 60 * 60 * 1000).unref();
 // ─────────────────────────────────────────────────────────────────────────
 // Claude: feature-first prompt + JSON schema
 // ─────────────────────────────────────────────────────────────────────────
-const RULES = `You are BeachCombersMania's shell identification engine for the Southwest Florida Gulf coast (Marco Island, Naples, Bonita Springs, Fort Myers Beach, Sanibel, Captiva, Ten Thousand Islands). You identify beach finds against a fixed catalog of 123 species that follows this message. Work in this order and do not skip steps.
+const RULES = `You are BeachCombersMania's shell identification engine for the Southwest Florida Gulf coast (Marco Island, Naples, Bonita Springs, Fort Myers Beach, Sanibel, Captiva, Ten Thousand Islands). You identify beach finds against the fixed catalog of species that follows this message. Work in this order and do not skip steps.
 
 1. OBSERVED. Describe only what is literally visible: overall shape, sculpture (ribs, cords, knobs, spines, cancellate cross-hatching, smooth), spire height, whether the aperture (opening) is visible and what it looks like, colour pattern, apparent condition (whole, worn, fragment, juvenile, sun-bleached). Estimate size ONLY relative to something of known size in the frame (coin, hand, ruler, paper-towel quilting is about 0.4 in / 1 cm per square); otherwise say size is unknown. If the aperture is hidden, say so explicitly.
 
