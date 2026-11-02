@@ -5,9 +5,11 @@ These files run on Hostinger web hosting at `beachcombersmania.online` (document
 | Path here | Live path on Hostinger | What |
 |---|---|---|
 | `hub/reel/index.php` | `public_html/reel/index.php` | Excursion Reel viewer (PHP + vanilla JS). Current: Phase 3f. |
-| `hub/app/index.html` | `public_html/app/index.html` | The BCM mobile app (PWA, wrapped as the Android APK). Current: Phase 3h (reads `assets/dining.json` at launch, embedded data as fallback). |
+| `hub/app/index.html` | `public_html/app/index.html` | The BCM mobile app (PWA, wrapped as the Android APK). Current: Phase 4 (cloud collection sync for paid accounts; reads `assets/dining.json` at launch). |
 | `hub/assets/dining.json` | `public_html/assets/dining.json` | Dining tab data, generated from Bill's private master CSV by `hub/tools/build-dining-json.py`. Current: Phase 3h, 144 places. |
 | `hub/root/.htaccess` | `public_html/.htaccess` | Apache rules for the hub root (config protection, cache headers, CORS for `dining.json`). |
+| `hub/root/_collection.php` | `public_html/_collection.php` | Cloud Collection API (Phase 4): a paid account's shells, JWT-gated, JSON + JPEG files under `bcm-collections/` outside `public_html`. |
+| `hub/tests/` | — | Headless/PHP test harnesses and the edit scripts that produced a phase (reproducible builds). |
 | `hub/notes/*.md` | — | The UPLOAD_MAP for each phase: what changed, why, how it was verified, upload record. |
 
 ## Rules
