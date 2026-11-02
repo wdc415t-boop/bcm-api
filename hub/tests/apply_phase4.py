@@ -79,7 +79,7 @@ const bcmSync={
     this.saveQueue(q);
   },
   dropCid(cid){ this.saveQueue(this.queue().filter(x=>x.cid!==cid)); },
-  cleanRecord(rec){ const d={...rec}; delete d.image_data; delete d.id; delete d.synced_at; return d; },
+  cleanRecord(rec){ const d={...rec}; if(typeof d.image_data==='string'&&d.image_data&&!/^data:/i.test(d.image_data)) d.image_ref=d.image_data.slice(0,300); delete d.image_data; delete d.id; delete d.synced_at; return d; },   // Shell by Sight saves a bundled image path, not a photo: carry the path
   photoFrom(rec){ const v=rec&&rec.image_data; if(typeof v!=='string') return ''; const m=v.match(/^data:image\/jpe?g;base64,(.+)$/i); if(!m) return ''; return (m[1].length*0.75)<=BCM_SYNC_MAX_PHOTO?m[1]:''; },
   async api(path,body){ const token=bcmAuth.getToken(); const opts={method:body?'POST':'GET',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}}; if(body) opts.body=JSON.stringify(body); const r=await fetch(bcmAuth.API_BASE+'/_collection.php'+(path||''),opts); let j=null; try{ j=await r.json(); }catch(e){} return {status:r.status,json:j||{}}; },
   async fetchPhoto(cid){ try{ const r=await fetch(bcmAuth.API_BASE+'/_collection.php?cid='+encodeURIComponent(cid)+'&img=1',{headers:{'Authorization':'Bearer '+bcmAuth.getToken()}}); if(!r.ok) return ''; const b=await r.blob(); return await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result||'')); fr.onerror=()=>res(''); fr.readAsDataURL(b); }); }catch(e){ return ''; } },
@@ -119,18 +119,23 @@ const bcmSync={
     let out; try{ out=await this.api('?list=1&region='+encodeURIComponent(region)); }catch(e){ this.lastError=String(e&&e.message||e); return false; }
     if(out.status!==200||!out.json.ok||!Array.isArray(out.json.shells)){ this.lastError=(out.json&&out.json.error)||('HTTP '+out.status); return false; }
     const server=new Map(out.json.shells.map(x=>[x.cid,x]));
-    const local=await dbGetAll(); const byCid=new Map(); let changed=false;
+    const local=await dbGetAll(); const byCid=new Map(); let changed=false; const pendingCids=new Set(this.queue().map(x=>x.cid));
     for(const rec of local){ if(rec.cid) byCid.set(rec.cid,rec); }
     // 1) server → local
     for(const [cid,sv] of server){
       const mine=byCid.get(cid);
       if(mine){
-        if((sv.updated||'')>(mine.updated||'')){ const d=sv.data||{}; if('user_notes' in d) mine.user_notes=d.user_notes; if('tags' in d) mine.tags=d.tags||[]; mine.updated=sv.updated; mine.synced_at=this.now(); await _dbPutRaw(mine); changed=true; }
-        else if(!mine.synced_at){ mine.synced_at=this.now(); await _dbPutRaw(mine); }
+        let dirty=false;
+        if((sv.updated||'')>(mine.updated||'')){ const d=sv.data||{}; if('user_notes' in d) mine.user_notes=d.user_notes; if('tags' in d) mine.tags=d.tags||[]; mine.updated=sv.updated; mine.synced_at=this.now(); dirty=true; changed=true; }
+        else if(!mine.synced_at){ mine.synced_at=this.now(); dirty=true; }
+        const ref=sv.data&&typeof sv.data.image_ref==='string'?sv.data.image_ref:'';
+        if(!mine.image_data&&ref){ mine.image_data=ref; dirty=true; changed=true; }                                   // Shell by Sight image arrives as a bundled path
+        if(!ref&&!sv.has_photo&&typeof mine.image_data==='string'&&mine.image_data&&!/^data:/i.test(mine.image_data)&&!pendingCids.has(cid)){ this.enqueue('put',cid,mine.region||region); }   // repair: server copy predates image_ref
+        if(dirty) await _dbPutRaw(mine);
       } else {
         const d={...(sv.data||{})}; d.cid=cid; d.region=sv.region||region; d.updated=sv.updated||this.now(); d.synced_at=this.now();
         if(!d.saved_at) d.saved_at=sv.created||d.updated;
-        d.image_data=sv.has_photo?await this.fetchPhoto(cid):'';
+        d.image_data=sv.has_photo?await this.fetchPhoto(cid):(typeof d.image_ref==='string'?d.image_ref:'');
         if(await _dbGetByCid(cid)) continue;                 // arrived meanwhile (another sync path) — never duplicate
         await _dbInsertRaw(d); changed=true;
       }
