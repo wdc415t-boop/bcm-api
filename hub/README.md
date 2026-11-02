@@ -5,7 +5,9 @@ These files run on Hostinger web hosting at `beachcombersmania.online` (document
 | Path here | Live path on Hostinger | What |
 |---|---|---|
 | `hub/reel/index.php` | `public_html/reel/index.php` | Excursion Reel viewer (PHP + vanilla JS). Current: Phase 3f. |
-| `hub/app/index.html` | `public_html/app/index.html` | The BCM mobile app (PWA, wrapped as the Android APK). Current: Phase 3g (live 2026-11-01, verified on iPhone). |
+| `hub/app/index.html` | `public_html/app/index.html` | The BCM mobile app (PWA, wrapped as the Android APK). Current: Phase 3h (reads `assets/dining.json` at launch, embedded data as fallback). |
+| `hub/assets/dining.json` | `public_html/assets/dining.json` | Dining tab data, generated from Bill's private master CSV by `hub/tools/build-dining-json.py`. Current: Phase 3h, 144 places. |
+| `hub/root/.htaccess` | `public_html/.htaccess` | Apache rules for the hub root (config protection, cache headers, CORS for `dining.json`). |
 | `hub/notes/*.md` | — | The UPLOAD_MAP for each phase: what changed, why, how it was verified, upload record. |
 
 ## Rules

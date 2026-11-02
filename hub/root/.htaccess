@@ -1,0 +1,34 @@
+# Protect sensitive PHP config files from direct web access
+<FilesMatch "^_bcm_config\.php$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Also protect webhook log
+<FilesMatch "^_webhook_log\.txt$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+# ── BCM go-live caching rules ─────────────────────────────────────────────────────
+# WHERE: append these lines to public_html/.htaccess on ALL SEVEN docroots
+#        (beachcombersmania.online + the 6 Mania door domains).
+#        If a domain has no .htaccess yet, create one containing exactly this.
+# WHY:   Hostinger serves HTML with no Cache-Control, so browsers keep stale
+#        builds after a deploy (documented gotcha ×8 pages now).
+#        HTML → always revalidate. Images → cache 30 days.
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|htm)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  <FilesMatch "\.(webp|jpe?g|png|gif|svg|ico)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+  # ── Phase 3h (2026-11-01): assets/dining.json is public listing data read by the app at launch.
+  #    The Android APK runs from a capacitor:// origin, so it needs CORS; always revalidate so a
+  #    re-upload shows up on the next launch.
+  <FilesMatch "^dining\.json$">
+    Header set Access-Control-Allow-Origin "*"
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>

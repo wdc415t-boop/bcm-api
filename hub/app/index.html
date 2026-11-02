@@ -3243,6 +3243,9 @@ let BCM_RESUMED=null; // the saved record this launch resumed from; cleared once
 function BeachCombersMania(){
   const [screen,setScreen]=useState(()=>{const r=bcmReadResume();if(r&&BCM_RESUME_SCREENS.has(r.screen)){BCM_RESUMED=r;return r.screen;}return "home";});
   useEffect(()=>{if(BCM_RESUMED&&screen!==BCM_RESUMED.screen)BCM_RESUMED=null;bcmWriteResume({screen});},[screen]);
+  // Phase 3h: re-render when dining.json arrives after first paint (the lists are re-derived from REGIONS_CONFIG)
+  const [,setDiningVersion]=useState(0);
+  useEffect(()=>{const on=()=>setDiningVersion(v=>v+1);window.addEventListener('bcm-dining-updated',on);return()=>window.removeEventListener('bcm-dining-updated',on);},[]);
   const [offlineSaveShell,setOfflineSaveShell]=useState(null); // offline funnel → SaveModal payload
   const [imageURL,setImageURL]=useState(null);
   const [imageB64,setImageB64]=useState(null);
@@ -6812,7 +6815,7 @@ Respond ONLY with valid JSON, no markdown:
         div({style:{background:"#f5f3ff",borderRadius:12,padding:"10px 14px",marginBottom:4,
           border:"1px solid #c4b5fd"}},
           p({style:{fontFamily:PF.serif2,fontSize:12,color:"#5b21b6",margin:0,lineHeight:1.5}},
-            "🎬 Rainy day? Catch a movie! Here are theaters near you.")
+            MOVIE_THEATERS.length?"🎬 Rainy day? Catch a movie! Here are theaters near you.":"🎬 No theaters listed for this area yet — check the Naples tab for Silverspot Cinema at Mercato.")
         ),
         ...MOVIE_THEATERS.map((theater,i)=>
           div({key:i,style:{background:"white",borderRadius:16,padding:"14px",
@@ -8878,6 +8881,48 @@ function mountApp(){
   if(typeof React==='undefined'){showError('React Missing','React CDN failed to load. Check internet connection.');return;}
   if(typeof ReactDOM==='undefined'){showError('ReactDOM Missing','ReactDOM CDN failed to load.');return;}
   try{
+    // ── Phase 3h (2026-11-01): Dining data comes from assets/dining.json on the hub, with the embedded
+    // REGIONS_CONFIG as the fallback. Fixing a restaurant's website is then a 64 KB upload, not a 3 MB app
+    // redeploy. The JSON is generated from Bill's dining master CSV by bcm-api/hub/tools/build-dining-json.py
+    // and has the same shape as REGIONS_CONFIG's four lists. Rules: the whole document must validate (every
+    // embedded region present, every list an array, every place named) or none of it is applied; a cached copy
+    // is applied at once and refreshed in the background when older than 6 hours; any failure leaves the
+    // embedded data untouched. RestaurantsScreen re-derives its lists from REGIONS_CONFIG on every render, so
+    // applying new lists only needs one re-render (the 'bcm-dining-updated' event bumps a counter in the shell).
+    const BCM_DINING_URL=(typeof BCM_HUB==='string'?BCM_HUB:'https://beachcombersmania.online')+'/assets/dining.json';
+    const BCM_DINING_KEY='bcm_dining_v1', BCM_DINING_REFRESH_MS=6*60*60*1000, BCM_DINING_LISTS=['restaurants','pizzaPlaces','iceCream','movies'];
+    window.BCM_DINING_SOURCE='embedded';
+    function bcmValidDining(doc){
+      try{
+        if(!doc||typeof doc!=='object'||!doc.regions||typeof doc.regions!=='object')return false;
+        for(const slug of Object.keys(REGIONS_CONFIG)){
+          const r=doc.regions[slug]; if(!r||typeof r!=='object')return false;
+          for(const k of BCM_DINING_LISTS){ if(!Array.isArray(r[k]))return false; }
+          for(const g of r.restaurants){ if(!g||typeof g.area!=='string'||!Array.isArray(g.places))return false; for(const p of g.places){ if(!p||typeof p.name!=='string'||!p.name)return false; } }
+          for(const k of ['pizzaPlaces','iceCream','movies']){ for(const p of r[k]){ if(!p||typeof p.name!=='string'||!p.name)return false; } }
+        }
+        return true;
+      }catch(e){return false;}
+    }
+    function bcmApplyDining(doc,source){
+      if(!bcmValidDining(doc))return false;
+      for(const slug of Object.keys(REGIONS_CONFIG)){ const r=doc.regions[slug]; for(const k of BCM_DINING_LISTS) REGIONS_CONFIG[slug][k]=r[k]; }
+      window.BCM_DINING_SOURCE=source+(doc.generated?' '+doc.generated:'');
+      try{window.dispatchEvent(new Event('bcm-dining-updated'));}catch(e){}
+      return true;
+    }
+    (function bcmLoadDining(){
+      let cached=null;
+      try{cached=JSON.parse(localStorage.getItem(BCM_DINING_KEY)||'null');}catch(e){cached=null;}
+      if(cached&&cached.doc&&bcmApplyDining(cached.doc,'cache')){ /* applied synchronously before first render */ }
+      else if(cached){ try{localStorage.removeItem(BCM_DINING_KEY);}catch(e){} cached=null; }
+      const fresh=cached&&typeof cached.ts==='number'&&(Date.now()-cached.ts)<BCM_DINING_REFRESH_MS;
+      if(fresh||typeof fetch!=='function')return;
+      fetch(BCM_DINING_URL,{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status)))
+        .then(doc=>{ if(bcmApplyDining(doc,'hub')){ try{localStorage.setItem(BCM_DINING_KEY,JSON.stringify({ts:Date.now(),doc}));}catch(e){} } else { console.warn('dining.json rejected by validation; keeping embedded data'); } })
+        .catch(e=>{ console.warn('dining.json not loaded ('+(e&&e.message)+'); keeping '+window.BCM_DINING_SOURCE+' data'); });
+    })();
+
     ReactDOM.createRoot(root).render(
       h(ErrorBoundary,null, h(BeachCombersMania))
     );
