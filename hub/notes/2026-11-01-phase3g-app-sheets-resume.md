@@ -7,7 +7,7 @@ Nancy's 2026-11-01 reports, all in the app (`public_html/app/index.html`). The E
 | `public_html/app/index.html` | `public_html/app/index.html` (**overwrite**) | Parts A–D below. 3,177,293 bytes. |
 | `public_html/app/index.backup-2026-11-01-3d.html` | (local only — restore copy) | Byte copy of the Phase 3d file that is live (3,173,462 bytes). Not uploaded; copy over `index.html` to roll back. |
 
-Nothing else changes: no APK rebuild (the APK wraps the live PWA), no `_reel.php`, no catalog, no hub pages.
+Nothing else changes: no APK rebuild (correction: until Phase 5b the APK bundled its own copy of the page; since 5b it loads the live PWA), no `_reel.php`, no catalog, no hub pages.
 
 ## Part A — bottom sheets render above the menu bar (Portal)
 
@@ -63,4 +63,4 @@ The identify screen said "Consulting the Gulf… / Our AI marine biologist is an
 
 ## Upload
 
-Hostinger web hosting, account `u605954531`, domain `beachcombersmania.online`, document root `public_html`. TUS upload via `hosting_files_generate-upload-url` (create 201, patch 204) to `app/index.html?override=true`, clear the Hostinger cache, read the live file back: expect **3,177,293 bytes** with the Phase 3g comment. Status: _pending Bill's "Yes, upload"._
+Hostinger web hosting, account `u605954531`, domain `beachcombersmania.online`, document root `public_html`. TUS upload via `hosting_files_generate-upload-url` (create 201, patch 204) to `app/index.html?override=true`, clear the Hostinger cache, read the live file back: expect **3,177,293 bytes** with the Phase 3g comment. Status: **LIVE** (uploaded 2026-11-01 on Bill's "Yes, upload").

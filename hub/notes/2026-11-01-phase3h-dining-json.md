@@ -40,4 +40,4 @@ Edit `BCM_Dining_Master.csv` → `python3 build-dining-json.py BCM_Dining_Master
 
 ## Upload
 
-Hostinger web hosting, account `u605954531`, domain `beachcombersmania.online`, document root `public_html`. TUS upload via `hosting_files_generate-upload-url` (create 201, patch 204) for each of the three files, clear the Hostinger cache, read back sizes, fetch `https://beachcombersmania.online/assets/dining.json` and check `access-control-allow-origin: *` and `count: 144`. Status: _pending Bill's "Yes, upload"._
+Hostinger web hosting, account `u605954531`, domain `beachcombersmania.online`, document root `public_html`. TUS upload via `hosting_files_generate-upload-url` (create 201, patch 204) for each of the three files, clear the Hostinger cache, read back sizes, fetch `https://beachcombersmania.online/assets/dining.json` and check `access-control-allow-origin: *` and `count: 144`. Status: **LIVE** (uploaded 2026-11-01 on Bill's "Yes, upload").

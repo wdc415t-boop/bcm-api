@@ -21,10 +21,10 @@ Worker registers (root scope, covers `/app/`); precache fills 132 pictures + 3 C
 
 The build project is `~/Desktop/BeachCombersMania` (Capacitor, `build-bcm-apk.sh`, `keystore.properties`; release keystore also copied under `BCM_AndroidDownload-2026-10-22/android/keystore/`). Live download page shows version code 8 → next is **9**. This session's folder-access request was blocked by the permission guard; Bill grants it with **"Add folder"** in the Claude desktop app.
 
-Plan once granted: `capacitor.config.json` → `"server": {"url": "https://beachcombersmania.online/app/", "cleartext": false}`; keep `appId` / signing; `versionCode 9`, `versionName 1.4`; build in the cloud container (JDK + Gradle 8.14 present, Google SDK hosts reachable) or via the project's own script; upload `android/BeachCombersMania.apk` + update `android/index.html` (version, date, size, SHA-256, code 9).
+Plan once granted: `capacitor.config.json` → `"server": {"url": "https://beachcombersmania.online/app/", "cleartext": false}`; keep `appId` / signing; `versionCode 9`, `versionName 1.7` (build.gradle was at 1.6, not 1.4 as first assumed); build in the cloud container (JDK + Gradle 8.14 present, Google SDK hosts reachable) or via the project's own script; upload `android/BeachCombersMania.apk` + update `android/index.html` (version, date, size, SHA-256, code 9).
 
 **Caveat for existing APK users:** the webview origin changes from the bundled app to `beachcombersmania.online`, so a local-only collection saved inside the old APK does not carry over on that phone. Paid accounts get theirs back from the cloud (Phase 4). Known APK users today: Bill (collection not worth keeping, per Oct 30 notes); Nancy is on iPhone.
 
 ## Status
 
-5a: _pending Bill's "Yes, upload"._  5b: _pending Desktop folder access._
+5a: **LIVE** 2026-11-01 23:28 ET.  5b: **LIVE** 2026-11-01 23:56 ET — APK 1.7 (code 9), 11,658,360 bytes, SHA-256 `712d39358f2ea7de2423fdf7486478a7f4b09a2b84286f0e479e03b3f69c9f05`, same signing cert as 1.6. Built in the cloud container (the connected-folder shell is a Linux sandbox that mounts the Mac folder, so the Mac JDK/SDK were not usable). Details: `2026-11-01-phase5b-apk-live-url.md`.

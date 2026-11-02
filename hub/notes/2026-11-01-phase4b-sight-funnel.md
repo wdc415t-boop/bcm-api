@@ -32,4 +32,4 @@ Home → Shell ID by Sight → answer four steps → a short list (a dozen or fe
 
 ## Upload
 
-TUS upload of `app/index.html` (201 / 204, offset 3195514), cache clear, read back. Status: _pending Bill's "Yes, upload"._
+TUS upload of `app/index.html` (201 / 204, offset 3195514), cache clear, read back. Status: **LIVE** (uploaded 2026-11-01 on Bill's "Yes, upload").
