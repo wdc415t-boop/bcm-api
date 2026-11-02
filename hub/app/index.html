@@ -2674,7 +2674,7 @@ function OfflineDrillDown({onMatchConfirmed,onTryAI,onAdvancedSearch,savedNames}
   const [step,setStep]=useState(1);
   const [answers,setAnswers]=useState({});
   const [results,setResults]=useState([]);
-  const RESULTS_LIMIT=8;
+  const RESULTS_LIMIT=12;   // Phase 4b: 12 (was 8)
 
   const getOptionsForStep=()=>{
     if(step===1)return MACRO_STRUCTURE_OPTIONS;
@@ -2695,13 +2695,19 @@ function OfflineDrillDown({onMatchConfirmed,onTryAI,onAdvancedSearch,savedNames}
     return "Top Local Matches";
   };
   const processResults=(finalAnswers)=>{
+    // Phase 4b: a full 4-step path must agree on the structure AND at least one strong attribute (score >= 70);
+    // every path used to pass ~100 of 124 species at > 20. Disc / Tube fast-track to results on the structure alone (40).
+    const fast=finalAnswers.macro==="disc"||finalAnswers.macro==="tube";
+    const minScore=fast?40:70;
     const matched=MASTER_SHELL_DB.map(shell=>({...shell,score:scoreShell(shell,finalAnswers)}))
-      .filter(s=>s.score>20)
+      .filter(s=>s.score>=minScore)
       .sort((a,b)=>b.score-a.score);
     setResults(matched);
     setStep(5);
   };
+  const scrollTop=()=>{ try{ const sc=document.getElementById('bcm-scroll'); if(sc) sc.scrollTop=0; window.scrollTo(0,0); }catch(e){} };   // Phase 4b: each step starts at the top
   const handleSelect=(filterKey,value)=>{
+    scrollTop();
     const newAnswers={...answers,[filterKey]:value};
     setAnswers(newAnswers);
     if(step===1){
@@ -2712,7 +2718,7 @@ function OfflineDrillDown({onMatchConfirmed,onTryAI,onAdvancedSearch,savedNames}
     else if(step===3){setStep(4);}
     else if(step===4){processResults(newAnswers);}
   };
-  const resetFunnel=()=>{setAnswers({});setStep(1);setResults([]);};
+  const resetFunnel=()=>{scrollTop();setAnswers({});setStep(1);setResults([]);};
 
   const qCard={background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:14,padding:16,textAlign:"center",marginBottom:14};
   const ghostBtn={width:"100%",padding:14,borderRadius:14,background:"rgba(255,255,255,0.06)",border:"2px solid rgba(255,255,255,0.2)",color:"white",fontWeight:700,marginTop:16,cursor:"pointer",fontFamily:PF.serif2,fontSize:15};
@@ -2727,7 +2733,7 @@ function OfflineDrillDown({onMatchConfirmed,onTryAI,onAdvancedSearch,savedNames}
           "Review the photos below. Tap one if it matches your shell.")
       ),
       results.length>RESULTS_LIMIT&&div({style:{fontFamily:PF.serif2,color:"rgba(255,255,255,0.5)",fontSize:12,textAlign:"center",margin:"4px 0 12px"}},
-        `Showing top ${RESULTS_LIMIT} of ${results.length} matches. Try Advanced Search to narrow further.`),
+        `Showing the top ${RESULTS_LIMIT} of ${results.length} likely matches. Not here? Browse all species below.`),
       div({style:{display:"grid",gap:16,marginTop:16}},
         topMatches.length>0
           ? topMatches.map(shell=>h(ShellCard,{key:shell.id,shell,onConfirm:onMatchConfirmed}))
@@ -2741,12 +2747,10 @@ function OfflineDrillDown({onMatchConfirmed,onTryAI,onAdvancedSearch,savedNames}
           boxShadow:"0 8px 28px rgba(249,115,22,0.4)"}},
         "📷 None match — Try AI Photo ID"),
       div({style:{textAlign:"center",marginTop:16,display:"grid",gap:18}},
-        el('button',{onClick:onAdvancedSearch,style:{...linkBtn,textDecoration:"none",lineHeight:1.45}},
-            div({style:{color:"rgba(255,255,255,0.75)",fontSize:14,fontWeight:600}},"Not finding it?"),
-            div({style:{color:"#7dd3fc",fontSize:17,fontWeight:800,textDecoration:"underline",marginTop:2}},"Try Advanced Search → Fill in the blanks")),
+        // Phase 4b: "Fill in the blanks" retired (exact-match dropdowns returned nothing for 59% of two-filter combos); Pick visually is the Advanced Search
         el('button',{onClick:()=>setShowCheat(true),style:{...linkBtn,textDecoration:"none",lineHeight:1.45}},
-            div({style:{color:"rgba(255,255,255,0.75)",fontSize:14,fontWeight:600}},"Browse photos of all "+MASTER_SHELL_DB.length+" species"),
-            div({style:{color:"#7dd3fc",fontSize:17,fontWeight:800,textDecoration:"underline",marginTop:2}},"Try Advanced Search → Pick visually"))),
+            div({style:{color:"rgba(255,255,255,0.75)",fontSize:14,fontWeight:600}},"Not finding it? Browse photos of all "+MASTER_SHELL_DB.length+" species"),
+            div({style:{color:"#7dd3fc",fontSize:17,fontWeight:800,textDecoration:"underline",marginTop:2}},"Advanced Search → Pick visually"))),
       showCheat&&h(FunnelCheatSheet,{onClose:()=>setShowCheat(false),savedNames:savedNames||new Set(),
         onPick:(shell)=>{setShowCheat(false);onMatchConfirmed(shell);}})
     );
@@ -2773,12 +2777,9 @@ function OfflineDrillDown({onMatchConfirmed,onTryAI,onAdvancedSearch,savedNames}
     step>1
       ? el('button',{onClick:resetFunnel,style:ghostBtn},"↩ Start Over")
       : div({style:{textAlign:"center",marginTop:10,display:"grid",gap:18}},
-          el('button',{onClick:onAdvancedSearch,style:{...linkBtn,textDecoration:"none",lineHeight:1.45}},
-            div({style:{color:"rgba(255,255,255,0.75)",fontSize:14,fontWeight:600}},"Know what you're looking for?"),
-            div({style:{color:"#7dd3fc",fontSize:17,fontWeight:800,textDecoration:"underline",marginTop:2}},"Try Advanced Search → Fill in the blanks")),
           el('button',{onClick:()=>setShowCheat(true),style:{...linkBtn,textDecoration:"none",lineHeight:1.45}},
-            div({style:{color:"rgba(255,255,255,0.75)",fontSize:14,fontWeight:600}},"Not sure what to type? Browse photos of all "+MASTER_SHELL_DB.length+" species"),
-            div({style:{color:"#7dd3fc",fontSize:17,fontWeight:800,textDecoration:"underline",marginTop:2}},"Try Advanced Search → Pick visually"))),
+            div({style:{color:"rgba(255,255,255,0.75)",fontSize:14,fontWeight:600}},"Know what it looks like? Browse photos of all "+MASTER_SHELL_DB.length+" species"),
+            div({style:{color:"#7dd3fc",fontSize:17,fontWeight:800,textDecoration:"underline",marginTop:2}},"Advanced Search → Pick visually"))),
     showCheat&&h(FunnelCheatSheet,{onClose:()=>setShowCheat(false),savedNames:savedNames||new Set(),
       onPick:(shell)=>{setShowCheat(false);onMatchConfirmed(shell);}})
   );
@@ -9049,6 +9050,7 @@ function mountApp(){
   if(typeof React==='undefined'){showError('React Missing','React CDN failed to load. Check internet connection.');return;}
   if(typeof ReactDOM==='undefined'){showError('ReactDOM Missing','ReactDOM CDN failed to load.');return;}
   try{
+    // ── Phase 4b (2026-11-01, 23:05): Shell by Sight funnel — score >= 70 (fast-track 40), top 12, scroll-to-top per step, "Fill in the blanks" retired.
     // ── Phase 4a (2026-11-01, 21:15): Shell by Sight images travel as image_ref. Phase 4: Cloud Collection — see bcmSync next to the IndexedDB helpers.
     // ── Phase 3h (2026-11-01): Dining data comes from assets/dining.json on the hub, with the embedded
     // REGIONS_CONFIG as the fallback. Fixing a restaurant's website is then a 64 KB upload, not a 3 MB app
