@@ -71,10 +71,27 @@ const serverList=async()=>{const r=await fetch(PHP+'?list=1&region=marco',{heade
   await A.page.evaluate(async id=>{ await dbUpdateTags(id,['favorite','gift']); },acA.id); await A.page.waitForTimeout(800);
   await B.page.evaluate(()=>bcmSync.sync('test')); await B.page.waitForTimeout(400);
   b=await shells(B.page); ok('B: tags merged from A', JSON.stringify((b.find(x=>x.name==='Alphabet Cone')||{}).tags)==='["favorite","gift"]');
+  // ── Shell by Sight: image is a bundled path, not a photo → must arrive on the other device as the same path
+  await A.page.evaluate(async()=>{ await dbAdd({name:'Fighting Conch',scientific:'Strombus alatus',rarity:'Common',location:'Marco Island, FL',date_found:'2026-11-01',user_notes:'by sight',image_data:'assets/img/shells/strombus_alatus.webp'}); }); await A.page.waitForTimeout(900);
+  sv=await serverList(); const fc=sv.find(x=>x.data.name==='Fighting Conch');
+  ok('server: Shell-by-Sight record carries image_ref, no photo', !!fc&&fc.has_photo===false&&fc.data.image_ref==='assets/img/shells/strombus_alatus.webp', JSON.stringify(fc&&{has_photo:fc.has_photo,ref:fc.data.image_ref}));
+  await B.page.evaluate(()=>bcmSync.sync('test')); await B.page.waitForTimeout(500);
+  const fcB=await B.page.evaluate(async()=>(await dbGetAll()).find(r=>r.name==='Fighting Conch'));
+  ok('B: Shell-by-Sight shell shows the bundled image path', !!fcB&&fcB.image_data==='assets/img/shells/strombus_alatus.webp', fcB&&fcB.image_data);
+  // repair path: a record synced BEFORE this fix (server copy has no image_ref) — simulate by stripping the ref server-side via a put without it
+  await fetch(PHP,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+PAID},body:JSON.stringify({action:'put',shell:{cid:fc.cid,region:'marco',updated:'2030-01-01T00:00:00Z',data:{name:'Fighting Conch',scientific:'Strombus alatus'}}})});
+  // B lost its image (as a pre-fix device would have): clear it locally, then A (which has the path) syncs and repairs the server, then B picks it up
+  await B.page.evaluate(async()=>{ const r=(await dbGetAll()).find(x=>x.name==='Fighting Conch'); r.image_data=''; await _dbPutRaw(r); });
+  await A.page.evaluate(()=>bcmSync.sync('test')); await A.page.waitForTimeout(900);
+  sv=await serverList(); ok('server: image_ref repaired by the device that has the path', (sv.find(x=>x.data.name==='Fighting Conch')||{data:{}}).data.image_ref==='assets/img/shells/strombus_alatus.webp');
+  await B.page.evaluate(()=>bcmSync.sync('test')); await B.page.waitForTimeout(500);
+  const fcB2=await B.page.evaluate(async()=>(await dbGetAll()).find(r=>r.name==='Fighting Conch'));
+  ok('B: missing image filled from the server ref', !!fcB2&&fcB2.image_data==='assets/img/shells/strombus_alatus.webp', fcB2&&fcB2.image_data);
+
   // ── Free account: local only, never talks to _collection.php
   const before=collCalls; const F=await device(browser,FREE,'F');
   ok('F: free scope → sync disabled', F.st.scope==='none'&&!F.st.enabled, JSON.stringify(F.st));
-  await F.page.evaluate(async photo=>{ await dbAdd({name:'Fighting Conch',scientific:'Strombus alatus',rarity:'Common',location:'x',date_found:'2026-11-01',user_notes:'',image_data:photo}); },PHOTO); await F.page.waitForTimeout(600);
+  await F.page.evaluate(async photo=>{ await dbAdd({name:'Banded Tulip',scientific:'Strombus alatus',rarity:'Common',location:'x',date_found:'2026-11-01',user_notes:'',image_data:photo}); },PHOTO); await F.page.waitForTimeout(600);
   const f=await shells(F.page); ok('F: shell saved locally with a cid, nothing queued, no server calls', f.length===1&&f[0].cid&&!f[0].synced&&collCalls===before&&(await F.page.evaluate(()=>bcmSync.queue().length))===0, `collCalls ${collCalls-before}`);
   // ── Reel publish still works from a synced shell (thumb from base64 image_data)
   const reelOK=await B.page.evaluate(async()=>{ const s=(await dbGetAll())[0]; const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=s.image_data;}); const c=document.createElement('canvas'); c.width=img.width; c.height=img.height; c.getContext('2d').drawImage(img,0,0); return c.toDataURL('image/jpeg',0.8).length>1000; });
