@@ -20,4 +20,4 @@ On either device, pick a shell with Shell by Sight → open the other device (re
 
 ## Upload
 
-TUS upload of `app/index.html` (create 201, patch 204, offset 3195340), cache clear, read back. Status: _pending Bill's "Yes, upload"._
+TUS upload of `app/index.html` (create 201, patch 204, offset 3195340), cache clear, read back. Status: **LIVE** (uploaded 2026-11-01 on Bill's "Yes, upload").
