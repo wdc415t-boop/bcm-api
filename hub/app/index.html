@@ -1931,7 +1931,7 @@ function homeCard({icon,title,sub,onClick,primary,flex,badge,accent,key}){
   const base=primary
     ?{background:"linear-gradient(135deg,#0284c7,#0c4a6e)",border:"1px solid rgba(255,255,255,0.35)",boxShadow:"0 8px 24px rgba(2,132,199,0.45)",titleColor:"white",subColor:"#bae6fd",badgeBg:"rgba(255,255,255,0.25)"}
     :dark
-      ?{background:"rgba(10,22,40,0.74)",backdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.28)",boxShadow:"0 2px 12px rgba(0,0,0,0.35)",titleColor:"white",subColor:"#bae6fd",badgeBg:"rgba(255,255,255,0.22)"}
+      ?{background:"rgba(10,22,40,0.82)",border:"1px solid rgba(255,255,255,0.28)",boxShadow:"0 2px 12px rgba(0,0,0,0.35)",titleColor:"white",subColor:"#bae6fd",badgeBg:"rgba(255,255,255,0.22)"}
       :{background:"rgba(255,255,255,0.96)",border:"1px solid #dbe4ee",boxShadow:"0 3px 12px rgba(0,0,0,0.18)",titleColor:"#0c4a6e",subColor:"#64748b",badgeBg:"#0284c7"};
   return el('button',{key:key||title,onClick,style:btn({display:"flex",alignItems:"center",gap:8,textAlign:"left",
       flex:flex||undefined,minWidth:0,borderRadius:14,padding:"9px 10px",
@@ -1943,6 +1943,99 @@ function homeCard({icon,title,sub,onClick,primary,flex,badge,accent,key}){
       div({style:{fontFamily:PF.serif2,fontSize:10.5,color:base.subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}},sub)),
     badge!=null&&span({style:{background:base.badgeBg,color:"white",borderRadius:10,padding:"1px 7px",fontSize:11,fontWeight:700,flexShrink:0}},String(badge))
   );
+}
+
+// ── Phase 6d (2026-11-03): the Home "Tides" card opens a 7-day NOAA tide chart inside the app — no hop to Safari.
+// Data: NOAA CO-OPS predictions API (CORS-enabled, no key): hourly heights for the curve, hi/lo for the list.
+const NOAA_STATIONS={
+  naples:{id:"8725110",name:"Naples / Marco Island",beaches:"Marco Island · Naples · Keewaydin · Vanderbilt"},
+  ftmyers:{id:"8725520",name:"Fort Myers Beach",beaches:"Bonita Beach · Lovers Key · Ft Myers Beach"},
+  sanibel:{id:"8725362",name:"Sanibel / Captiva",beaches:"Sanibel Island · Captiva Island · Point Ybel"}};
+const TIDE_CACHE={};   // station+day → {hourly,hilo}
+function tideFmtTime(t){ // "2026-11-03 07:25" → "7:25 AM"
+  const m=/ (\d{2}):(\d{2})$/.exec(t||""); if(!m)return t||"";
+  let h=+m[1]; const ap=h>=12?"PM":"AM"; h=h%12||12; return h+":"+m[2]+" "+ap;
+}
+function tideFmtDay(d,opts){ // "2026-11-03" → "Tue, Nov 3"
+  const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||""); if(!m)return d||"";
+  return new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString("en-US",opts||{weekday:"short",month:"short",day:"numeric"});
+}
+function TideSheet({region,onClose}){
+  const vvBox=useVisibleViewport();
+  const [station,setStation]=useState(TIDE_STATION_FOR_REGION[region]||"naples");
+  const st=NOAA_STATIONS[station]||NOAA_STATIONS.naples;
+  const now=new Date();
+  const day=now.getFullYear()+String(now.getMonth()+1).padStart(2,"0")+String(now.getDate()).padStart(2,"0");
+  const key=st.id+"-"+day;
+  const [data,setData]=useState(TIDE_CACHE[key]||null);
+  const [loading,setLoading]=useState(!TIDE_CACHE[key]);
+  const [err,setErr]=useState("");
+  useEffect(()=>{
+    if(TIDE_CACHE[key]){setData(TIDE_CACHE[key]);setLoading(false);setErr("");return;}
+    let alive=true;setData(null);setLoading(true);setErr("");
+    const base="https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=BeachCombersMania&datum=MLLW&time_zone=lst_ldt&units=english&format=json&station="+st.id+"&begin_date="+day+"&range=168";
+    Promise.all([fetch(base+"&interval=h").then(r=>r.json()),fetch(base+"&interval=hilo").then(r=>r.json())])
+      .then(([h,hl])=>{if(!alive)return;
+        const hourly=(h&&h.predictions)||[], hilo=(hl&&hl.predictions)||[];
+        if(!hourly.length||!hilo.length){setErr((h&&h.error&&h.error.message)||"NOAA did not return tide predictions for this station.");setLoading(false);return;}
+        const d={hourly,hilo}; TIDE_CACHE[key]=d; setData(d); setLoading(false);})
+      .catch(()=>{if(!alive)return;setErr("Couldn't reach NOAA — check your connection and try again.");setLoading(false);});
+    return ()=>{alive=false;};
+  },[key]);
+  const T={fontFamily:PF.serif2,fontSize:13,color:"#334155",lineHeight:1.45,margin:0};
+  const card={background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"10px 12px"};
+  // chart + per-day list
+  let chart=null, days=[];
+  if(data){
+    const hs=data.hourly.map(p=>+p.v); const lo=Math.min(...hs), hi=Math.max(...hs), span=(hi-lo)||1;
+    const W=360,H=120,PL=28,PT=8,PB=18; const n=hs.length;
+    const X=i=>PL+(i/(n-1))*(W-PL-4), Y=v=>PT+(1-(v-lo)/span)*(H-PT-PB);
+    const pts=hs.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" ");
+    const area="M"+X(0).toFixed(1)+","+(H-PB)+" L"+pts.replace(/ /g," L")+" L"+X(n-1).toFixed(1)+","+(H-PB)+" Z";
+    const nowIdx=Math.max(0,Math.min(n-1,Math.round((Date.now()-new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime())/3600000)));
+    const dayMarks=[]; for(let i=0;i<n;i+=24){const d=(data.hourly[i].t||"").slice(0,10);dayMarks.push({x:X(i),label:tideFmtDay(d,{weekday:"short"})});}
+    const zeroY=(lo<0&&hi>0)?Y(0):null;
+    chart=el('svg',{viewBox:"0 0 "+W+" "+H,style:{width:"100%",height:"auto",display:"block"},"aria-label":"7-day tide curve"},
+      el('path',{d:area,fill:"rgba(2,132,199,0.16)"}),
+      el('polyline',{points:pts,fill:"none",stroke:"#0284c7",strokeWidth:1.8,strokeLinejoin:"round"}),
+      zeroY!=null&&el('line',{x1:PL,x2:W-4,y1:zeroY,y2:zeroY,stroke:"#94a3b8",strokeDasharray:"3 3",strokeWidth:0.8}),
+      ...dayMarks.map((m,i)=>h(Fragment,{key:i},el('line',{x1:m.x,x2:m.x,y1:PT,y2:H-PB,stroke:"#cbd5e1",strokeWidth:0.8}),el('text',{x:m.x+3,y:H-5,fontSize:9,fill:"#64748b",fontFamily:"sans-serif"},m.label))),
+      el('line',{x1:X(nowIdx),x2:X(nowIdx),y1:PT,y2:H-PB,stroke:"#f97316",strokeWidth:1.5}),
+      el('text',{x:2,y:Y(hi)+4,fontSize:9,fill:"#64748b",fontFamily:"sans-serif"},hi.toFixed(1)+" ft"),
+      el('text',{x:2,y:Y(lo)+1,fontSize:9,fill:"#64748b",fontFamily:"sans-serif"},lo.toFixed(1)+" ft"));
+    const byDay={}; data.hilo.forEach(p=>{const d=(p.t||"").slice(0,10);(byDay[d]=byDay[d]||[]).push(p);});
+    const lows=data.hilo.filter(p=>p.type==="L").map(p=>+p.v).sort((a,b)=>a-b); const bestCut=lows.length?lows[Math.min(2,lows.length-1)]:-99;
+    days=Object.keys(byDay).sort().map(d=>({d,rows:byDay[d],best:byDay[d].some(p=>p.type==="L"&&+p.v<=bestCut)}));
+  }
+  const chip=(id)=>el('button',{key:id,onClick:()=>setStation(id),style:btn({background:station===id?"linear-gradient(135deg,#0284c7,#0c4a6e)":"#f1f5f9",color:station===id?"white":"#334155",borderRadius:999,padding:"6px 12px",fontSize:12,fontWeight:700,fontFamily:PF.serif2})},NOAA_STATIONS[id].name);
+  return h(Portal,null,div({style:{...vvBox,background:"rgba(0,0,0,0.55)",zIndex:60,display:"flex",alignItems:"flex-end",justifyContent:"center"},onClick:onClose},
+    div({style:{background:"white",borderRadius:"20px 20px 0 0",padding:"18px 18px calc(28px + env(safe-area-inset-bottom, 0px))",width:"100%",maxWidth:520,maxHeight:"calc(100% - 24px)",overflowY:"auto",overscrollBehavior:"contain",boxSizing:"border-box"},onClick:e=>e.stopPropagation()},
+      div({style:{position:"sticky",top:0,zIndex:2,background:"white",margin:"-18px -18px 8px",padding:"14px 18px 8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:"1px solid #f1f5f9"}},
+        div({style:{minWidth:0}},
+          el('h3',{style:{fontFamily:PF.serif,fontSize:18,color:"#0f172a",margin:0}},"🌊 7-Day Tides"),
+          p({style:{fontFamily:PF.serif2,fontSize:12,color:"#64748b",margin:"2px 0 0"}},"NOAA station "+st.id+" · "+st.beaches)),
+        el('button',{onClick:onClose,"aria-label":"Close",style:btn({background:"#f1f5f9",borderRadius:"50%",width:34,height:34,color:"#334155",fontSize:16,fontWeight:700,flexShrink:0})},"✕")),
+      div({style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}},...Object.keys(NOAA_STATIONS).map(chip)),
+      loading
+        ?div({style:{textAlign:"center",padding:"36px 0"}},div({style:{fontSize:36,display:"inline-block",animation:"spin 1.5s linear infinite"}},"🌊"),p({style:{...T,textAlign:"center",marginTop:12}},"Loading NOAA tide predictions…"))
+      :err
+        ?div({style:{textAlign:"center",padding:"28px 8px"}},span({style:{fontSize:40,display:"block",marginBottom:10}},"📡"),p({style:{...T,color:"#b91c1c"}},err),
+            el('button',{onClick:()=>openExternal("https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id="+st.id),style:btn({marginTop:14,background:"linear-gradient(135deg,#0284c7,#0c4a6e)",borderRadius:12,padding:"10px 16px",color:"white",fontSize:14,fontWeight:700})},"Open NOAA's page"))
+      :div(null,
+          div({style:{...card,padding:"8px 6px 4px"}},chart,
+            p({style:{...T,fontSize:10.5,color:"#64748b",margin:"4px 6px 0"}},"Height above MLLW · orange line = now · dashed = 0 ft")),
+          ...days.map((dy,i)=>div({key:dy.d,style:{...card,marginTop:8,borderColor:dy.best?"#86efac":"#e2e8f0",background:dy.best?"#f0fdf4":"#f8fafc"}},
+            div({style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+              span({style:{fontFamily:PF.serif,fontSize:14,fontWeight:800,color:"#0f172a"}},(i===0?"Today · ":"")+tideFmtDay(dy.d)),
+              dy.best&&span({style:{background:"#dcfce7",color:"#166534",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:999}},"🐚 best low of the week")),
+            div({style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",marginTop:4}},
+              ...dy.rows.map((r,j)=>div({key:j,style:{fontFamily:PF.serif2,fontSize:13,color:r.type==="L"?"#0c4a6e":"#475569",fontWeight:r.type==="L"?700:400}},
+                (r.type==="L"?"▼ Low ":"▲ High ")+tideFmtTime(r.t)+" · "+(+r.v).toFixed(1)+" ft"))))),
+          p({style:{...T,fontSize:11,color:"#94a3b8",marginTop:12}},"Predictions by NOAA CO-OPS for station "+st.id+" ("+st.name+"), local time. Lowest lows are the best shelling windows. ",
+            el('a',{href:"https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id="+st.id,onClick:e=>{e.preventDefault();openExternal("https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id="+st.id);},style:{color:"#0284c7"}},"NOAA's page")),
+          div({style:{display:"flex",gap:8,marginTop:12}},
+            el('button',{onClick:onClose,style:btn({background:"#f1f5f9",borderRadius:12,padding:"10px 16px",color:"#334155",fontSize:14,fontWeight:700})},"Close")))
+  )));
 }
 
 // ── Phase 6b (2026-11-03): the Home "Beach Conditions" card shows the region's latest Perfect Shelling Day forecast —
@@ -1979,6 +2072,13 @@ function ForecastSheet({region,onClose}){
   const r=f?(f.recommendations||{}):{};
   const rare=f&&f.rareShellAlert&&(f.rareShellAlert.species||[]).length?f.rareShellAlert:null;
   const shareUrl=rec?(rec.url||(BCM_HUB+"/forecast/?r="+rec.token)):"";
+  const [toast,setToast]=useState("");
+  const shareForecast=()=>{ // Phase 6d: the phone's share sheet keeps the user in the app; desktop copies the link
+    const title=f?(f.beach+" shelling forecast · Prime Score "+f.primeScore+"/100"):"Shelling forecast";
+    if(navigator.share){navigator.share({title,text:"7-day shelling forecast from BeachCombersMania",url:shareUrl}).catch(()=>{});return;}
+    const done=()=>{setToast("Link copied — paste it anywhere.");setTimeout(()=>setToast(""),2500);};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(shareUrl).then(done,()=>setToast(shareUrl));else setToast(shareUrl);
+  };
   const H={fontFamily:PF.serif,fontSize:14,fontWeight:800,color:"#0c4a6e",margin:"14px 0 8px"};
   const T={fontFamily:PF.serif2,fontSize:13,color:"#334155",lineHeight:1.45,margin:0};
   const card={background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"10px 12px"};
@@ -2042,9 +2142,11 @@ function ForecastSheet({region,onClose}){
             div({style:{fontFamily:PF.serif,fontSize:13,fontWeight:800,color:"#92400e"}},"💎 Rare shell alert — "+(rare.probability||0)+"% chance"),
             div(null,...(rare.species||[]).map(chip)),
             rare.conditions&&p({style:{...T,fontSize:12,marginTop:6}},rare.conditions)),
-          div({style:{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}},
-            el('button',{onClick:()=>openExternal(shareUrl),style:btn({background:"linear-gradient(135deg,#0284c7,#0ea5e9)",borderRadius:12,padding:"10px 16px",color:"white",fontSize:14,fontWeight:700})},"Open full report / Share"),
-            el('button',{onClick:onClose,style:btn({background:"#f1f5f9",borderRadius:12,padding:"10px 16px",color:"#334155",fontSize:14,fontWeight:700})},"Close")),
+          div({style:{display:"flex",gap:8,flexWrap:"wrap",marginTop:14,alignItems:"center"}},
+            el('button',{onClick:shareForecast,style:btn({background:"linear-gradient(135deg,#0284c7,#0ea5e9)",borderRadius:12,padding:"10px 16px",color:"white",fontSize:14,fontWeight:700})},"📣 Share"),
+            el('button',{onClick:onClose,style:btn({background:"#f1f5f9",borderRadius:12,padding:"10px 16px",color:"#334155",fontSize:14,fontWeight:700})},"Close"),
+            el('a',{href:shareUrl,onClick:e=>{e.preventDefault();openExternal(shareUrl);},style:{fontFamily:PF.serif2,fontSize:12,color:"#0284c7",marginLeft:"auto"}},"Open in browser ↗")),
+          toast&&p({style:{...T,fontSize:12,color:"#166534",marginTop:8}},toast),
           p({style:{...T,fontSize:11,color:"#94a3b8",marginTop:10}},"Perfect Shelling Day Predictor · generated "+when+" ET · a new forecast every Monday"))
   )));
 }
@@ -3562,6 +3664,7 @@ function BeachCombersMania(){
   const [showSave,setShowSave]=useState(false);
   const [showReel,setShowReel]=useState(false);   // Phase 1c: Excursion Reel sheet
   const [showForecast,setShowForecast]=useState(false);   // Phase 6b: Shelling Day Forecast sheet (Home → Beach Conditions)
+  const [showTides,setShowTides]=useState(false);         // Phase 6d: 7-day NOAA tide sheet (Home → Tides)
   const [explorerTab,setExplorerTab]=useState("map");            // Phase 6: Beach Explorer tab, lifted so Home → Tides works
   const [explorerStation,setExplorerStation]=useState("naples"); // Phase 6: NOAA station shown on the Tides tab
   const [showBeachModal,setShowBeachModal]=useState(false);
@@ -4166,8 +4269,7 @@ function BeachCombersMania(){
           onChange:e=>handleFile(e.target.files[0])}),
         div({style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}},
           homeCard({icon:"🔍",title:"Shell ID by Sight",sub:"Offline mode",onClick:()=>setScreen("offline")}),
-          homeCard({icon:"🌊",title:"Tides",sub:"NOAA 7-day tide chart",accent:"#10b981",
-            onClick:()=>{setExplorerStation(TIDE_STATION_FOR_REGION[currentRegion]||"naples");setExplorerTab("tides");setScreen("map");}}),
+          homeCard({icon:"🌊",title:"Tides",sub:"NOAA 7-day tide chart",accent:"#10b981",onClick:()=>setShowTides(true)}),
           homeCard({icon:isGuest?"🔒":"🗃️",title:"My Shell Collection",sub:"Save your finds",
             badge:stats.total>0?stats.total:null,
             onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}setScreen("collection");}}),
@@ -8501,6 +8603,7 @@ Respond ONLY with valid JSON, no markdown:
         ),
       showBeachModal&&h(BeachConditionsModal),
       showForecast&&h(ForecastSheet,{region:currentRegion,onClose:()=>setShowForecast(false)}),
+      showTides&&h(TideSheet,{region:currentRegion,onClose:()=>setShowTides(false)}),
       // ── LOGIN MODAL (MOBILE) ────────────────────────────────────
       showLoginModal&&div({style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:950,
         display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
@@ -8627,7 +8730,7 @@ Respond ONLY with valid JSON, no markdown:
                 ["📸 Identify a Shell","Photograph a shell and get the three closest of "+MASTER_SHELL_DB.length+" Gulf Coast species, with reasons and a photo tip. See 'How the shell identifier works' above."],
                 ["🖼️ Upload Photo","Upload an existing photo from your camera roll for AI identification."],
                 ["🔍 Shell ID by Sight","Match a shell by shape, color and size — works offline, no photo needed."],
-                ["🌊 Tides","Straight to the NOAA 7-day tide chart for your region's station, plus the weather + shelling outlook."],
+                ["🌊 Tides","A 7-day NOAA tide chart for your region's station, right in the app: the curve, every high and low with times and heights, and the best shelling lows marked."],
                 ["🗃️ My Shell Collection","Every shell you have saved, with photos, notes and your finds map."],
                 ["🎞️ Excursion Reel","Turn your finds into a shareable slideshow (also on the Collection screen)."],
                 ["📖 Shelling Tips","Expert shelling tips — best times, best beaches, and Florida shell collecting rules."],
@@ -8801,6 +8904,7 @@ Respond ONLY with valid JSON, no markdown:
         ),
         showBeachModal&&h(BeachConditionsModal),
       showForecast&&h(ForecastSheet,{region:currentRegion,onClose:()=>setShowForecast(false)}),
+      showTides&&h(TideSheet,{region:currentRegion,onClose:()=>setShowTides(false)}),
       // ── LOGIN MODAL (DESKTOP) ─────────────────────────────────────
       showLoginModal&&div({style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:950,
         display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
@@ -8922,7 +9026,7 @@ Respond ONLY with valid JSON, no markdown:
                 ["📸 Identify a Shell","Photograph a shell and get the three closest of "+MASTER_SHELL_DB.length+" Gulf Coast species, with reasons and a photo tip. See 'How the shell identifier works' above."],
                 ["🖼️ Upload Photo","Upload an existing photo from your camera roll for AI identification."],
                 ["🔍 Shell ID by Sight","Match a shell by shape, color and size — works offline, no photo needed."],
-                ["🌊 Tides","Straight to the NOAA 7-day tide chart for your region's station, plus the weather + shelling outlook."],
+                ["🌊 Tides","A 7-day NOAA tide chart for your region's station, right in the app: the curve, every high and low with times and heights, and the best shelling lows marked."],
                 ["🗃️ My Shell Collection","Every shell you have saved, with photos, notes and your finds map."],
                 ["🎞️ Excursion Reel","Turn your finds into a shareable slideshow (also on the Collection screen)."],
                 ["📖 Shelling Tips","Expert shelling tips — best times, best beaches, and Florida shell collecting rules."],
@@ -9137,6 +9241,8 @@ function mountApp(){
   if(typeof React==='undefined'){showError('React Missing','React CDN failed to load. Check internet connection.');return;}
   if(typeof ReactDOM==='undefined'){showError('ReactDOM Missing','ReactDOM CDN failed to load.');return;}
   try{
+    // ── Phase 6d (2026-11-03, evening): Home → Tides opens TideSheet (NOAA CO-OPS predictions, 7-day curve + highs/lows, in-app);
+    //    ForecastSheet shares via navigator.share (no hop to the browser); dark cards drop backdrop-filter (iOS repaint cost).
     // ── Phase 6b (2026-11-03, Nancy's tweaks): dark cards hard-coded; card order Identify, Upload, Shell ID by Sight, Tides, Collection,
     //    Reel, Shelling Tips, Beach Conditions, Map, Dining; Beach Conditions opens ForecastSheet = this week's Predictor forecast for the
     //    region (GET /_forecast.php?latest=<beach-slug>), replacing the canned season text (BeachConditionsModal is no longer reachable).
