@@ -1913,6 +1913,142 @@ function getRegionLocationFull() {
 }
 
 // Web link handler — uses in-app browser when available
+// ── Phase 6 (2026-11-03): universal directions link. iPhone/iPad → Apple Maps (on every iOS device; opens the
+// Maps app directly, no Google Maps needed). Android → Google Maps https link (Android hands it to the Maps app when
+// installed, otherwise the browser). Desktop → Google Maps web. Replaces the hidden-iframe comgooglemaps:// trick.
+function openDirectionsTo(dest){
+  const q=encodeURIComponent(dest);
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  openExternal(isIOS?"https://maps.apple.com/?daddr="+q+"&dirflg=d":"https://www.google.com/maps/dir/?api=1&destination="+q+"&travelmode=driving");
+}
+// Phase 6: which NOAA station the Home "Tides" card opens for each region
+const TIDE_STATION_FOR_REGION={marco:"naples",naples:"naples",bonita:"ftmyers",ftmyers:"ftmyers",sanibel:"sanibel",captiva:"sanibel"};
+// Phase 6: Home menu card style. "light" = white cards like the Subscriptions feature grid; "dark" = frosted cards
+// on the photo. Test builds read ?home=dark; the shipped build hard-codes Nancy's pick.
+const HOME_STYLE="dark";   // Nancy's pick (2026-11-03): dark cards read better in the sun. "light" = white cards, still supported.
+function homeCard({icon,title,sub,onClick,primary,flex,badge,accent,key}){
+  const dark=HOME_STYLE==="dark";
+  const base=primary
+    ?{background:"linear-gradient(135deg,#0284c7,#0c4a6e)",border:"1px solid rgba(255,255,255,0.35)",boxShadow:"0 8px 24px rgba(2,132,199,0.45)",titleColor:"white",subColor:"#bae6fd",badgeBg:"rgba(255,255,255,0.25)"}
+    :dark
+      ?{background:"rgba(10,22,40,0.74)",backdropFilter:"blur(10px)",border:"1px solid rgba(255,255,255,0.28)",boxShadow:"0 2px 12px rgba(0,0,0,0.35)",titleColor:"white",subColor:"#bae6fd",badgeBg:"rgba(255,255,255,0.22)"}
+      :{background:"rgba(255,255,255,0.96)",border:"1px solid #dbe4ee",boxShadow:"0 3px 12px rgba(0,0,0,0.18)",titleColor:"#0c4a6e",subColor:"#64748b",badgeBg:"#0284c7"};
+  return el('button',{key:key||title,onClick,style:btn({display:"flex",alignItems:"center",gap:8,textAlign:"left",
+      flex:flex||undefined,minWidth:0,borderRadius:14,padding:"9px 10px",
+      background:base.background,backdropFilter:base.backdropFilter,WebkitBackdropFilter:base.backdropFilter,
+      border:base.border,borderLeft:(accent&&!primary)?"4px solid "+accent:base.border,boxShadow:base.boxShadow})},
+    span({style:{fontSize:22,flexShrink:0,lineHeight:1}},icon),
+    div({style:{minWidth:0,flex:1}},
+      div({style:{fontFamily:PF.serif,fontSize:13,fontWeight:700,color:base.titleColor,lineHeight:1.15}},title),
+      div({style:{fontFamily:PF.serif2,fontSize:10.5,color:base.subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}},sub)),
+    badge!=null&&span({style:{background:base.badgeBg,color:"white",borderRadius:10,padding:"1px 7px",fontSize:11,fontWeight:700,flexShrink:0}},String(badge))
+  );
+}
+
+// ── Phase 6b (2026-11-03): the Home "Beach Conditions" card shows the region's latest Perfect Shelling Day forecast —
+// the same Predictor report the Monday digest snapshots (shared at /forecast/?r=TOKEN) — read-only, inside the app.
+// Data: GET BCM_HUB/_forecast.php?latest=<beach-slug> (newest snapshot for that beach; 404 = none published yet).
+const PREDICTOR_BEACH_FOR_REGION={marco:"marco-island",naples:"naples-beach",bonita:"bonita-springs",ftmyers:"fort-myers-beach",sanibel:"sanibel-island",captiva:"captiva-island"};
+const FORECAST_CACHE={};   // beach slug → record, for this app session (a new forecast lands once a week)
+function fcDate(iso,opts){
+  const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
+  if(!m)return iso||"";
+  const d=new Date(+m[1],+m[2]-1,+m[3]);
+  if(opts==="wd")return d.toLocaleDateString("en-US",{weekday:"short"})+" "+(+m[2])+"/"+(+m[3]);
+  return d.toLocaleDateString("en-US",opts||{month:"short",day:"numeric"});
+}
+function ForecastSheet({region,onClose}){
+  const vvBox=useVisibleViewport();
+  const slug=PREDICTOR_BEACH_FOR_REGION[region]||"marco-island";
+  const [rec,setRec]=useState(FORECAST_CACHE[slug]||null);
+  const [loading,setLoading]=useState(!FORECAST_CACHE[slug]);
+  const [err,setErr]=useState("");
+  useEffect(()=>{
+    if(FORECAST_CACHE[slug]){setRec(FORECAST_CACHE[slug]);setLoading(false);setErr("");return;}
+    let alive=true;setRec(null);setLoading(true);setErr("");
+    fetch(BCM_HUB+"/_forecast.php?latest="+slug,{cache:"no-store"})
+      .then(r=>r.json().then(j=>({ok:r.ok,j})))
+      .then(({ok,j})=>{if(!alive)return;
+        if(ok&&j&&j.forecast){FORECAST_CACHE[slug]=j;setRec(j);}
+        else setErr((j&&j.error)||"No forecast has been published for this beach yet.");
+        setLoading(false);})
+      .catch(()=>{if(!alive)return;setErr("Couldn't load the forecast — check your connection and try again.");setLoading(false);});
+    return ()=>{alive=false;};
+  },[slug]);
+  const f=rec&&rec.forecast;
+  const r=f?(f.recommendations||{}):{};
+  const rare=f&&f.rareShellAlert&&(f.rareShellAlert.species||[]).length?f.rareShellAlert:null;
+  const shareUrl=rec?(rec.url||(BCM_HUB+"/forecast/?r="+rec.token)):"";
+  const H={fontFamily:PF.serif,fontSize:14,fontWeight:800,color:"#0c4a6e",margin:"14px 0 8px"};
+  const T={fontFamily:PF.serif2,fontSize:13,color:"#334155",lineHeight:1.45,margin:0};
+  const card={background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"10px 12px"};
+  const chip=(t,i)=>span({key:i,style:{display:"inline-block",background:"#e0f2fe",color:"#0369a1",fontSize:11,padding:"2px 8px",borderRadius:8,margin:"4px 4px 0 0",fontFamily:PF.serif2}},t);
+  const when=f?(f.generatedAt?new Date(f.generatedAt).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/New_York"}):fcDate(rec.day)):"";
+  return h(Portal,null,div({style:{...vvBox,background:"rgba(0,0,0,0.55)",zIndex:60,display:"flex",alignItems:"flex-end",justifyContent:"center"},onClick:onClose},
+    div({style:{background:"white",borderRadius:"20px 20px 0 0",padding:"18px 18px calc(28px + env(safe-area-inset-bottom, 0px))",width:"100%",maxWidth:520,maxHeight:"calc(100% - 24px)",overflowY:"auto",overscrollBehavior:"contain",boxSizing:"border-box"},onClick:e=>e.stopPropagation()},
+      div({style:{position:"sticky",top:0,zIndex:2,background:"white",margin:"-18px -18px 8px",padding:"14px 18px 8px",
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:"1px solid #f1f5f9"}},
+        div({style:{minWidth:0}},
+          el('h3',{style:{fontFamily:PF.serif,fontSize:18,color:"#0f172a",margin:0}},"🐚 Shelling Day Forecast"),
+          p({style:{fontFamily:PF.serif2,fontSize:12,color:"#64748b",margin:"2px 0 0"}},
+            f?(f.beach+" · Week of "+fcDate(rec.day,{month:"long",day:"numeric",year:"numeric"})):getRegionDisplayName(region))),
+        el('button',{onClick:onClose,"aria-label":"Close",style:btn({background:"#f1f5f9",borderRadius:"50%",width:34,height:34,color:"#334155",fontSize:16,fontWeight:700,flexShrink:0})},"✕")),
+      loading
+        ?div({style:{textAlign:"center",padding:"36px 0"}},
+            div({style:{fontSize:36,display:"inline-block",animation:"spin 1.5s linear infinite"}},"🐚"),
+            p({style:{...T,textAlign:"center",marginTop:12}},"Loading this week's forecast…"))
+      :err
+        ?div({style:{textAlign:"center",padding:"28px 8px"}},
+            span({style:{fontSize:40,display:"block",marginBottom:10}},"📡"),
+            p({style:{...T,color:"#b91c1c"}},err),
+            p({style:{...T,color:"#64748b",fontSize:12,marginTop:8}},"A new forecast for every beach is published each Monday morning."),
+            div({style:{display:"flex",gap:8,justifyContent:"center",marginTop:14}},
+              el('button',{onClick:()=>openExternal(BCM_HUB+"/predictor/"),style:btn({background:"linear-gradient(135deg,#0284c7,#0c4a6e)",borderRadius:12,padding:"10px 16px",color:"white",fontSize:14,fontWeight:700})},"Open the Predictor"),
+              el('button',{onClick:onClose,style:btn({background:"#f1f5f9",borderRadius:12,padding:"10px 16px",color:"#334155",fontSize:14,fontWeight:700})},"Close")))
+      :div(null,
+          div({style:{display:"flex",gap:12,alignItems:"center",borderRadius:14,padding:"12px 14px",background:"linear-gradient(135deg,#0c4a6e,#0284c7)"}},
+            div({style:{width:76,height:76,borderRadius:"50%",flexShrink:0,background:"conic-gradient(#34d399 "+(f.primeScore||0)+"%, rgba(255,255,255,0.18) 0)",display:"flex",alignItems:"center",justifyContent:"center"}},
+              div({style:{width:60,height:60,borderRadius:"50%",background:"#0c4a6e",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}},
+                span({style:{fontFamily:PF.serif,fontSize:22,fontWeight:900,color:"white",lineHeight:1}},String(f.primeScore)),
+                span({style:{fontSize:9,color:"#bae6fd",letterSpacing:"0.5px",marginTop:2}},"/ 100"))),
+            div({style:{minWidth:0}},
+              div({style:{fontFamily:PF.serif,fontSize:13,fontWeight:800,color:"white",marginBottom:3}},"Prime Shelling Score"),
+              p({style:{...T,color:"#e0f2fe",fontSize:12,lineHeight:1.4}},f.scoreSummary))),
+          (f.station||f.moon)&&p({style:{...T,fontSize:11,color:"#64748b",marginTop:6}},
+            "Real NOAA tides"+(f.station?" · "+f.station:"")+(f.moon?" · "+f.moon.name+" moon ("+f.moon.illum+"% lit)":"")),
+          div({style:H},"🏆 Top shelling windows"),
+          ...(f.topWindows||[]).map((w,i)=>div({key:i,style:{...card,marginBottom:8}},
+            div({style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}},
+              span({style:{fontFamily:PF.serif,fontSize:14,fontWeight:800,color:"#0f172a"}},(w.day||"")+" "+fcDate(w.date)),
+              span({style:{background:"#dcfce7",color:"#166534",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:999,whiteSpace:"nowrap"}},"Score "+w.score)),
+            div({style:{fontFamily:PF.serif2,fontSize:14,fontWeight:600,color:"#b45309",margin:"2px 0 4px"}},"⏰ "+(w.timeWindow||"")),
+            w.tideCondition&&p({style:{...T,fontSize:12}},"🌊 "+w.tideCondition),
+            div(null,...(w.targetShells||[]).map(chip)),
+            w.reasoning&&p({style:{...T,fontSize:12,color:"#64748b",marginTop:6}},w.reasoning))),
+          div({style:H},"📅 7-day breakdown"),
+          div({style:{...card,padding:"2px 12px"}},
+            ...(f.dailyForecast||[]).map((d,i)=>div({key:i,style:{display:"flex",gap:10,padding:"7px 0",borderBottom:i<(f.dailyForecast.length-1)?"1px solid #e2e8f0":"none"}},
+              div({style:{fontFamily:PF.serif,fontSize:12,fontWeight:800,color:"#0c4a6e",width:62,flexShrink:0,paddingTop:1}},fcDate(d.date,"wd")),
+              div({style:{minWidth:0,flex:1}},
+                div({style:{fontFamily:PF.serif2,fontSize:13,fontWeight:600,color:"#0f172a",lineHeight:1.3}},"⏰ "+(d.bestTime||"—")),
+                div({style:{fontFamily:PF.serif2,fontSize:11.5,color:"#64748b",marginTop:2}},
+                  "Tide "+(d.tideAdvantage==null?"—":d.tideAdvantage)+" · Weather "+(d.weatherScore==null?"—":d.weatherScore)+(d.varietyLevel?" · "+d.varietyLevel+" variety":"")+(d.recommendedSpot?" · "+d.recommendedSpot:"")))))),
+          div({style:H},"🎯 Recommendations"),
+          div({style:card},
+            p({style:T},el('b',null,"Best spot: "),(r.spotName||"")+(r.bestGPSSpot?" ("+r.bestGPSSpot+")":"")),
+            (r.likelyShells||[]).length>0&&p({style:{...T,marginTop:4}},el('b',null,"Likely shells: "),r.likelyShells.join(", ")),
+            (r.proTips||[]).length>0&&el('ul',{style:{margin:"6px 0 0",paddingLeft:18}},...r.proTips.map((t,i)=>el('li',{key:i,style:{...T,fontSize:12,marginBottom:3}},t)))),
+          rare&&div({style:{...card,background:"#fffbeb",border:"1px solid #fcd34d",marginTop:12}},
+            div({style:{fontFamily:PF.serif,fontSize:13,fontWeight:800,color:"#92400e"}},"💎 Rare shell alert — "+(rare.probability||0)+"% chance"),
+            div(null,...(rare.species||[]).map(chip)),
+            rare.conditions&&p({style:{...T,fontSize:12,marginTop:6}},rare.conditions)),
+          div({style:{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}},
+            el('button',{onClick:()=>openExternal(shareUrl),style:btn({background:"linear-gradient(135deg,#0284c7,#0ea5e9)",borderRadius:12,padding:"10px 16px",color:"white",fontSize:14,fontWeight:700})},"Open full report / Share"),
+            el('button',{onClick:onClose,style:btn({background:"#f1f5f9",borderRadius:12,padding:"10px 16px",color:"#334155",fontSize:14,fontWeight:700})},"Close")),
+          p({style:{...T,fontSize:11,color:"#94a3b8",marginTop:10}},"Perfect Shelling Day Predictor · generated "+when+" ET · a new forecast every Monday"))
+  )));
+}
+
 function openExternal(url) {
   if (window.cordova && cordova.InAppBrowser) {
     cordova.InAppBrowser.open(url, '_blank', 'location=yes,closebuttoncaption=Back to App,toolbarcolor=#0c4a6e');
@@ -3122,7 +3258,11 @@ function ReelSheet({collection,regionName,onPublish,onClose}){
   const fld={width:"100%",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"10px 14px",fontFamily:PF.serif2,fontSize:14,color:"#0f172a",marginBottom:12,boxSizing:"border-box"};
   return h(Portal,null,div({style:{...vvBox,background:"rgba(0,0,0,0.55)",zIndex:60,display:"flex",alignItems:"flex-end",justifyContent:"center"},onClick:onClose},
     div({style:{background:"white",borderRadius:"20px 20px 0 0",padding:"18px 18px calc(28px + env(safe-area-inset-bottom, 0px))",width:"100%",maxWidth:520,maxHeight:"calc(100% - 24px)",overflowY:"auto",overscrollBehavior:"contain",boxSizing:"border-box"},onClick:e=>e.stopPropagation()},
-      el('h3',{style:{fontFamily:PF.serif,fontSize:18,color:"#0f172a",margin:"0 0 4px"}},"🎞️ Excursion Reel"),
+      // Phase 6: sticky header with a close button — the sheet can be left at any point without scrolling to Cancel
+      div({style:{position:"sticky",top:0,zIndex:2,background:"white",margin:"-18px -18px 8px",padding:"14px 18px 8px",
+          display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid #f1f5f9"}},
+        el('h3',{style:{fontFamily:PF.serif,fontSize:18,color:"#0f172a",margin:0}},"🎞️ Excursion Reel"),
+        el('button',{onClick:onClose,"aria-label":"Close",style:btn({background:"#f1f5f9",borderRadius:"50%",width:34,height:34,color:"#334155",fontSize:16,fontWeight:700,flexShrink:0})},"\u2715")),
       state==="done"
         ?div(null,
             p({style:{fontFamily:PF.serif2,fontSize:14,color:"#166534",margin:"0 0 10px"}},"Your reel is live. Anyone with the link can watch it."),
@@ -3145,7 +3285,7 @@ function ReelSheet({collection,regionName,onPublish,onClose}){
                 s.image_data?el('img',{src:s.image_data,alt:"",style:{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}):span({style:{width:44,height:44,borderRadius:8,background:"#e2e8f0",display:"inline-block",flexShrink:0}}),
                 div({style:{minWidth:0}},div({style:{fontFamily:PF.serif,fontSize:13,fontWeight:700,color:"#0f172a",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},s.name),div({style:{fontFamily:PF.serif2,fontSize:11,color:"#64748b"}},s.date_found||""))))),
             err&&p({style:{color:"#b91c1c",fontFamily:PF.serif2,fontSize:13,margin:"0 0 10px"}},err),
-            div({style:{display:"flex",gap:10}},
+            div({style:{display:"flex",position:"sticky",bottom:0,zIndex:2,background:"white",margin:"0 -18px",padding:"8px 18px calc(8px + env(safe-area-inset-bottom, 0px))",gap:10,boxShadow:"0 -6px 12px rgba(255,255,255,0.9)"}},
               el('button',{onClick:onClose,style:btn({flex:1,background:"#f1f5f9",borderRadius:12,padding:12,color:"#334155",fontSize:14,fontWeight:700})},"Cancel"),
               el('button',{onClick:go,disabled:state==="sending",style:btn({flex:2,background:"linear-gradient(135deg,#f59e0b,#f97316)",borderRadius:12,padding:12,color:"white",fontSize:14,fontWeight:700,opacity:state==="sending"?0.7:1})},state==="sending"?"Publishing…":"Publish reel")),
             myReels())
@@ -3421,6 +3561,9 @@ function BeachCombersMania(){
   const [error,setError]=useState(null);
   const [showSave,setShowSave]=useState(false);
   const [showReel,setShowReel]=useState(false);   // Phase 1c: Excursion Reel sheet
+  const [showForecast,setShowForecast]=useState(false);   // Phase 6b: Shelling Day Forecast sheet (Home → Beach Conditions)
+  const [explorerTab,setExplorerTab]=useState("map");            // Phase 6: Beach Explorer tab, lifted so Home → Tides works
+  const [explorerStation,setExplorerStation]=useState("naples"); // Phase 6: NOAA station shown on the Tides tab
   const [showBeachModal,setShowBeachModal]=useState(false);
   const [showHelp,setShowHelp]=useState(false);
   const [beachConditions,setBeachConditions]=useState(null);
@@ -4009,67 +4152,33 @@ function BeachCombersMania(){
                 fontSize:11,color:"white",fontWeight:700})},"Upgrade"))
       ),
 
-      // ── MIDDLE: Action buttons ───────────────────────────────────
-      div({style:{padding:"4px 16px 0",display:"flex",flexDirection:"column",gap:5}},
-
-        el('button',{onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}setScreen("camera");},
-          style:btn({background:"linear-gradient(135deg,#0284c7,#0c4a6e)",
-            border:"2px solid rgba(255,255,255,0.2)",
-            borderRadius:14,padding:"11px 0",fontSize:15,fontWeight:700,
-            color:"white",boxShadow:"0 8px 28px rgba(2,132,199,0.45)",
-            display:"flex",alignItems:"center",justifyContent:"center",gap:10})},
-          isGuest?"🔒  Identify a Shell":"📷  Identify a Shell"
-        ),
-
-        el('button',{onClick:()=>setScreen("offline"),
-          style:btn({background:"linear-gradient(135deg,#0891b2,#06b6d4)",
-            border:"2px solid rgba(255,255,255,0.2)",
-            borderRadius:14,padding:"11px 0",fontSize:15,fontWeight:700,
-            color:"white",boxShadow:"0 8px 28px rgba(8,145,178,0.45)",
-            display:"flex",alignItems:"center",justifyContent:"center",gap:10})},
-          isGuest?"🔍  Shell ID by Sight — FREE":"🔍  Shell ID by Sight"
-        ),
-
-        el('button',{onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}fileRef.current&&fileRef.current.click();},
-          style:btn({background:"rgba(255,255,255,0.1)",
-            backdropFilter:"blur(8px)",
-            border:"1px solid rgba(255,255,255,0.25)",
-            borderRadius:12,padding:"9px 0",fontSize:14,fontWeight:600,
-            color:"white",display:"flex",alignItems:"center",
-            justifyContent:"center",gap:8})},
-          isGuest?"🔒  Upload Photo":"🖼️  Upload Photo"
+      // ── MIDDLE: Home menu (Phase 6, 2026-11-03; order + wording per Nancy the same day) — one card style for every
+      // destination (see homeCard). Row 1 = Identify + Upload. Rows 2–5, left→right: Shell ID by Sight, Tides, My Shell
+      // Collection, Excursion Reel, Shelling Tips, Beach Conditions (this week's Predictor forecast), Map, Dining. Guest gating unchanged.
+      div({style:{padding:"6px 14px 0",display:"flex",flexDirection:"column",gap:7}},
+        div({style:{display:"flex",gap:7}},
+          homeCard({icon:isGuest?"🔒":"📷",title:"Identify a Shell",sub:"Point your camera · AI match",primary:true,flex:1.55,
+            onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}setScreen("camera");}}),
+          homeCard({icon:isGuest?"🔒":"🖼️",title:"Upload Photo",sub:"From camera",flex:1,
+            onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}fileRef.current&&fileRef.current.click();}})
         ),
         el('input',{ref:fileRef,type:"file",accept:"image/*",style:{display:"none"},
           onChange:e=>handleFile(e.target.files[0])}),
-
-        el('button',{onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}setScreen("collection");},
-          style:btn({background:"linear-gradient(135deg,#059669,#0d9488)",
-            borderRadius:14,padding:"10px 0",fontSize:14,fontWeight:700,
-            color:"white",display:"flex",alignItems:"center",
-            justifyContent:"center",gap:8,
-            boxShadow:"0 4px 16px rgba(5,150,105,0.35)"})},
-          "🗃️  My Shell Collection",
-          stats.total>0&&span({style:{background:"rgba(255,255,255,0.25)",
-            borderRadius:10,padding:"1px 8px",fontSize:13,marginLeft:4}},
-            stats.total)
-        ),
-
-        // ── 4 Nav buttons: Dining, Shell Guide, Beach, Map ──
-        div({style:{display:"flex",gap:10}},
-          ...[["🍽️","Dining","restaurants"],["📖","Shell Guide","tips"],["⛅","Beach","beach"],["🗺️","Map","map"]].map(([ic,lb,sc])=>
-            el('button',{key:sc,onClick:()=>{if(sc==="beach"){fetchBeachConditions();setShowBeachModal(true);}else{setScreen(sc);}},
-              style:btn({flex:1,
-                background:"rgba(10,22,40,0.72)",
-                backdropFilter:"blur(10px)",
-                border:"1px solid rgba(255,255,255,0.28)",
-                borderRadius:10,padding:"8px 4px",
-                color:"white",fontSize:14,fontWeight:700,
-                fontFamily:PF.serif,
-                boxShadow:"0 2px 12px rgba(0,0,0,0.35)"})
-              },
-              ic+" "+lb)
-          )
-        ),
+        div({style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}},
+          homeCard({icon:"🔍",title:"Shell ID by Sight",sub:"Offline mode",onClick:()=>setScreen("offline")}),
+          homeCard({icon:"🌊",title:"Tides",sub:"NOAA 7-day tide chart",accent:"#10b981",
+            onClick:()=>{setExplorerStation(TIDE_STATION_FOR_REGION[currentRegion]||"naples");setExplorerTab("tides");setScreen("map");}}),
+          homeCard({icon:isGuest?"🔒":"🗃️",title:"My Shell Collection",sub:"Save your finds",
+            badge:stats.total>0?stats.total:null,
+            onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}setScreen("collection");}}),
+          homeCard({icon:isGuest?"🔒":"🎞️",title:"Excursion Reel",sub:"Your shelling slideshows",accent:"#f97316",
+            onClick:()=>{if(isGuest){bcmAuth.promptUpgrade('guest');return;}setScreen("collection");setShowReel(true);}}),
+          homeCard({icon:"📖",title:"Shelling Tips",sub:"Best beaches, times & rules",onClick:()=>setScreen("tips")}),
+          homeCard({icon:"⛅",title:"Beach Conditions",sub:"Shelling day forecast",onClick:()=>setShowForecast(true)}),
+          homeCard({icon:"🗺️",title:"Map",sub:"Beaches, boats & airports",
+            onClick:()=>{setExplorerTab("map");setScreen("map");}}),
+          homeCard({icon:"🍽️",title:"Dining",sub:"Restaurants, pizza & more",onClick:()=>setScreen("restaurants")})
+        )
       ),
       // ── BOTTOM: Regional beach photo centered in remaining space
       div({style:{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"10px 0 0"}},
@@ -6040,34 +6149,7 @@ Perfect for: Kids · Grandkids · Rainy Day Activities · Beach Memories`
   // ── SMART MAPS HELPER ────────────────────────────────────────────────────────
   // Tries native Google Maps app first (comgooglemaps://), falls back to
   // maps.google.com web URL which works on all devices and is fully printable.
-  function openMaps(daddr) {
-    const encoded = encodeURIComponent(daddr);
-    const webUrl  = "https://maps.google.com/?daddr=" + encoded + "&dirflg=d";
-    const appUrl  = "comgooglemaps://?daddr=" + encoded + "&directionsmode=driving";
-    // On iOS/Android we attempt the native app scheme via a hidden iframe.
-    // If Google Maps isn't installed the iframe load fails silently and we
-    // fall back to the web URL after a short timeout.
-    const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isAndroid = /Android/.test(navigator.userAgent);
-    if (isIOS || isAndroid) {
-      let appOpened = false;
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = appUrl;
-      document.body.appendChild(iframe);
-      // If the app handled the URL the page visibility will change; if not,
-      // we open the web fallback after 500 ms.
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-        if (!document.hidden) {
-          openExternal(webUrl);
-        }
-      }, 500);
-    } else {
-      // Desktop — go straight to web version
-      openExternal(webUrl);
-    }
-  }
+  function openMaps(daddr) { openDirectionsTo(daddr); }   // Phase 6: Apple Maps on iOS, Google Maps elsewhere
 
   // ── SAFE WEBSITE OPENER ─────────────────────────────────────────────────────
   // Pre-checks a URL with a no-cors HEAD fetch before opening it.
@@ -7264,11 +7346,11 @@ Respond ONLY with valid JSON, no markdown:
     "Other Gulf of America Location":{x:148, y:422, label:"Marco Island", region:"marco"}}
 
   function MapScreen({collection,setScreen}){
-    const [mapTab,setMapTab]=useState("map"); // "map"|"tides"|"boats"
+    const mapTab=explorerTab, setMapTab=setExplorerTab;   // Phase 6: lifted to the root so Home → Tides can deep-link
     const [selectedBeach,setSelectedBeach]=useState(null);
     const [beachScreen,setBeachScreen]=useState(false);
     const [panelShell,setPanelShell]=useState(null);
-    const [tideStation,setTideStation]=useState("naples"); // default Naples
+    const tideStation=explorerStation, setTideStation=setExplorerStation;   // Phase 6: lifted (Home "Tides" picks the region's station)
 
     // ── AI BOAT REFRESH STATE ─────────────────────────────────────────
     const [aiNewBoats,setAiNewBoats]=useState([]);
@@ -7337,10 +7419,7 @@ Respond ONLY with valid JSON, no markdown:
     const selectedData=selectedBeach&&byRegion[selectedBeach];
 
     // Open Google Maps directions to a beach region
-    const openDirections=(region)=>{
-      const url="https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(region.mapsQ);
-      openExternal(url);
-    };
+    const openDirections=(region)=>openDirectionsTo(region.mapsQ);   // Phase 6
 
     // ── TIDE STATIONS — simplified link-out to authoritative sources ──
     const TIDE_STATIONS=[
@@ -8421,6 +8500,7 @@ Respond ONLY with valid JSON, no markdown:
           )
         ),
       showBeachModal&&h(BeachConditionsModal),
+      showForecast&&h(ForecastSheet,{region:currentRegion,onClose:()=>setShowForecast(false)}),
       // ── LOGIN MODAL (MOBILE) ────────────────────────────────────
       showLoginModal&&div({style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:950,
         display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
@@ -8544,13 +8624,16 @@ Respond ONLY with valid JSON, no markdown:
               )),
               div({style:{fontFamily:PF.serif,fontSize:14,fontWeight:700,color:"#0c4a6e",marginBottom:6,marginTop:10}},"📌 Home Screen Buttons"),
               ...[
-                ["📸 Identify Shell","Photograph a shell and get the three closest of "+MASTER_SHELL_DB.length+" Gulf Coast species, with reasons and a photo tip. See 'How the shell identifier works' above."],
-                ["📤 Upload Photo","Upload an existing photo from your camera roll for AI identification."],
-                ["📖 Shell Tips","Expert shelling tips — best times, best beaches, and Florida shell collecting rules."],
-                ["🍽️ Dining","Full dining directory — Dine Out, Resorts, Pizza, Ice Cream, Movies, Delivery, Getters, and Recipes."],
-                ["📖 Shell Guide","Quick access to the comprehensive shell species guide."],
-                ["⛅ Beach","AI-generated beach conditions, tide times, weather, and shelling tips for your region."],
+                ["📸 Identify a Shell","Photograph a shell and get the three closest of "+MASTER_SHELL_DB.length+" Gulf Coast species, with reasons and a photo tip. See 'How the shell identifier works' above."],
+                ["🖼️ Upload Photo","Upload an existing photo from your camera roll for AI identification."],
+                ["🔍 Shell ID by Sight","Match a shell by shape, color and size — works offline, no photo needed."],
+                ["🌊 Tides","Straight to the NOAA 7-day tide chart for your region's station, plus the weather + shelling outlook."],
+                ["🗃️ My Shell Collection","Every shell you have saved, with photos, notes and your finds map."],
+                ["🎞️ Excursion Reel","Turn your finds into a shareable slideshow (also on the Collection screen)."],
+                ["📖 Shelling Tips","Expert shelling tips — best times, best beaches, and Florida shell collecting rules."],
+                ["⛅ Beach Conditions","This week's Perfect Shelling Day forecast for your region — Prime Score, best windows, the 7-day table and likely finds — straight from the Predictor, new every Monday."],
                 ["🗺️ Map","Interactive map plus Tides, Species Guide, Boats, and Airports tabs."],
+                ["🍽️ Dining","Full dining directory — Dine Out, Resorts, Pizza, Ice Cream, Movies, Delivery, Getters, and Recipes."],
               ].map(([title,desc],i)=>div({key:"h"+i,style:{marginBottom:8}},
                 div({style:{fontFamily:PF.serif,fontSize:12,fontWeight:700,color:"#0c4a6e"}},title),
                 p({style:{fontFamily:PF.serif2,fontSize:12,color:"#475569",margin:"2px 0 0",lineHeight:1.5}},desc)
@@ -8717,6 +8800,7 @@ Respond ONLY with valid JSON, no markdown:
           span({style:{color:"white",fontSize:11}},"●●● WiFi 🔋")
         ),
         showBeachModal&&h(BeachConditionsModal),
+      showForecast&&h(ForecastSheet,{region:currentRegion,onClose:()=>setShowForecast(false)}),
       // ── LOGIN MODAL (DESKTOP) ─────────────────────────────────────
       showLoginModal&&div({style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:950,
         display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
@@ -8835,13 +8919,16 @@ Respond ONLY with valid JSON, no markdown:
               )),
               div({style:{fontFamily:PF.serif,fontSize:14,fontWeight:700,color:"#0c4a6e",marginBottom:6,marginTop:10}},"📌 Home Screen Buttons"),
               ...[
-                ["📸 Identify Shell","Photograph a shell and get the three closest of "+MASTER_SHELL_DB.length+" Gulf Coast species, with reasons and a photo tip. See 'How the shell identifier works' above."],
-                ["📤 Upload Photo","Upload an existing photo from your camera roll for AI identification."],
-                ["📖 Shell Tips","Expert shelling tips — best times, best beaches, and Florida shell collecting rules."],
-                ["🍽️ Dining","Full dining directory — Dine Out, Resorts, Pizza, Ice Cream, Movies, Delivery, Getters, and Recipes."],
-                ["📖 Shell Guide","Quick access to the comprehensive shell species guide."],
-                ["⛅ Beach","AI-generated beach conditions, tide times, weather, and shelling tips for your region."],
+                ["📸 Identify a Shell","Photograph a shell and get the three closest of "+MASTER_SHELL_DB.length+" Gulf Coast species, with reasons and a photo tip. See 'How the shell identifier works' above."],
+                ["🖼️ Upload Photo","Upload an existing photo from your camera roll for AI identification."],
+                ["🔍 Shell ID by Sight","Match a shell by shape, color and size — works offline, no photo needed."],
+                ["🌊 Tides","Straight to the NOAA 7-day tide chart for your region's station, plus the weather + shelling outlook."],
+                ["🗃️ My Shell Collection","Every shell you have saved, with photos, notes and your finds map."],
+                ["🎞️ Excursion Reel","Turn your finds into a shareable slideshow (also on the Collection screen)."],
+                ["📖 Shelling Tips","Expert shelling tips — best times, best beaches, and Florida shell collecting rules."],
+                ["⛅ Beach Conditions","This week's Perfect Shelling Day forecast for your region — Prime Score, best windows, the 7-day table and likely finds — straight from the Predictor, new every Monday."],
                 ["🗺️ Map","Interactive map plus Tides, Species Guide, Boats, and Airports tabs."],
+                ["🍽️ Dining","Full dining directory — Dine Out, Resorts, Pizza, Ice Cream, Movies, Delivery, Getters, and Recipes."],
               ].map(([title,desc],i)=>div({key:"h"+i,style:{marginBottom:8}},
                 div({style:{fontFamily:PF.serif,fontSize:12,fontWeight:700,color:"#0c4a6e"}},title),
                 p({style:{fontFamily:PF.serif2,fontSize:12,color:"#475569",margin:"2px 0 0",lineHeight:1.5}},desc)
@@ -9050,6 +9137,12 @@ function mountApp(){
   if(typeof React==='undefined'){showError('React Missing','React CDN failed to load. Check internet connection.');return;}
   if(typeof ReactDOM==='undefined'){showError('ReactDOM Missing','ReactDOM CDN failed to load.');return;}
   try{
+    // ── Phase 6b (2026-11-03, Nancy's tweaks): dark cards hard-coded; card order Identify, Upload, Shell ID by Sight, Tides, Collection,
+    //    Reel, Shelling Tips, Beach Conditions, Map, Dining; Beach Conditions opens ForecastSheet = this week's Predictor forecast for the
+    //    region (GET /_forecast.php?latest=<beach-slug>), replacing the canned season text (BeachConditionsModal is no longer reachable).
+    // ── Phase 6 (2026-11-03): Home menu rebuilt as a 9-tile card grid (homeCard, HOME_STYLE light/dark); Tides + Excursion Reel
+    //    cards added; "Shell Guide" tile renamed "Shelling Tips" (it opens TipsScreen); Beach Explorer tab/station lifted to the root;
+    //    Directions open Apple Maps on iOS / Google Maps elsewhere (openDirectionsTo); Reel sheet has a sticky ✕ header + sticky Cancel/Publish.
     // ── Phase 4b (2026-11-01, 23:05): Shell by Sight funnel — score >= 70 (fast-track 40), top 12, scroll-to-top per step, "Fill in the blanks" retired.
     // ── Phase 4a (2026-11-01, 21:15): Shell by Sight images travel as image_ref. Phase 4: Cloud Collection — see bcmSync next to the IndexedDB helpers.
     // ── Phase 3h (2026-11-01): Dining data comes from assets/dining.json on the hub, with the embedded
