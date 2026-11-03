@@ -14,3 +14,6 @@ Files (same bytes as Hostinger): `hub/app/index.html`, `hub/root/_forecast.php` 
   Directions → Apple Maps on iOS / Google Maps https elsewhere (`openDirectionsTo`). "Shell Guide" renamed "Shelling Tips". Help text updated.
 - Known: Nov 2 digest got HTTP 502 (malformed model JSON) for Naples Beach; `_forecast_weekly.php` does not retry — candidate follow-up.
 - Rollback: the three `*.backup-2026-11-03-*` files in `BCM_Phase6-HomeMenu-2026-11-03/public_html/`.
+
+## Phase 6c — Monday digest retry (live 2026-11-03 15:19 ET)
+`hub/root/_forecast_weekly.php` (13,847 B, same bytes as Hostinger): each beach gets up to 3 forecast calls, 25 s apart (`BCM_WEEKLY_RETRIES`, `BCM_WEEKLY_RETRY_WAIT` optional in `_bcm_config.php`), before it is listed under "Not available this run". Dry-run tested against a stub API (Naples fails once → recovered on try 2; a beach that always fails → reported after 3 tries). Cron unchanged (Mondays 7:00 AM ET). Backup: `_forecast_weekly.backup-2026-11-03-2a.php` in the Phase 6 folder.
