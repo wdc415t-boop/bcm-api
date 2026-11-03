@@ -17,3 +17,6 @@ Files (same bytes as Hostinger): `hub/app/index.html`, `hub/root/_forecast.php` 
 
 ## Phase 6c — Monday digest retry (live 2026-11-03 15:19 ET)
 `hub/root/_forecast_weekly.php` (13,847 B, same bytes as Hostinger): each beach gets up to 3 forecast calls, 25 s apart (`BCM_WEEKLY_RETRIES`, `BCM_WEEKLY_RETRY_WAIT` optional in `_bcm_config.php`), before it is listed under "Not available this run". Dry-run tested against a stub API (Naples fails once → recovered on try 2; a beach that always fails → reported after 3 tries). Cron unchanged (Mondays 7:00 AM ET). Backup: `_forecast_weekly.backup-2026-11-03-2a.php` in the Phase 6 folder.
+
+## Phase 6d — Tides in-app, no browser hops (live 2026-11-03 15:49 ET)
+`hub/app/index.html` (3,220,087 B, same bytes as Hostinger). Home → Tides opens `TideSheet`: NOAA CO-OPS predictions API (hourly curve + hi/lo list, 7 days, stations 8725110 / 8725520 / 8725362, three lowest lows marked). NOAA's page cannot be framed (X-Frame-Options SAMEORIGIN), so the chart is drawn in-app. Forecast sheet shares via `navigator.share` (copy-link fallback); "Open in browser" is a small link. Dark cards drop `backdrop-filter`. Reason: Bill's phone test — Tides landed on the Explorer tab, and the app froze after returning from the NOAA page and the forecast share page. Backup: `index.backup-2026-11-03-6b.html` in the Phase 6 folder.
