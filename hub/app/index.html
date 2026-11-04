@@ -51,6 +51,8 @@ body.desktop-preview #root{width:auto;height:auto;}
 }
 /* Phase 6h: on short screens (≤800px high) the home sunset banner and beach photo may shrink to 120px so the page does not scroll */
 @media (max-height:800px){ .bcm-mshell .bcm-photo{min-height:120px!important;} }
+/* Phase 6i: when the home column is measured taller than the screen (bcm-tight, set by the app), the photos may shrink to 110px */
+.bcm-mshell .bcm-tight .bcm-photo{min-height:110px!important;}
 @media print{
   body>*{display:none!important;}
   #mm-report-root{display:block!important;position:fixed!important;inset:0!important;width:100%!important;height:auto!important;overflow:visible!important;z-index:9999!important;background:white!important;}
@@ -8598,6 +8600,15 @@ Respond ONLY with valid JSON, no markdown:
     window.location.href=BCM_HUB;
   };
 
+  // Phase 6i (2026-11-03): the Home column must not scroll. If it measures taller than the screen (Samsung font scaling,
+  // short phones), `bcm-tight` lets the two photos shrink to 110 px (see <style>). Screens that fit are left untouched.
+  useEffect(()=>{
+    const fit=()=>{const el=document.querySelector('.bcm-mshell .bcm-screen');if(!el)return;el.classList.remove('bcm-tight');
+      if(screen==="home"&&el.scrollHeight>el.clientHeight+1)el.classList.add('bcm-tight');};
+    fit();const t=setTimeout(fit,350);window.addEventListener('resize',fit);
+    return()=>{clearTimeout(t);window.removeEventListener('resize',fit);};
+  },[screen,authScope]);
+
   const isAndroid=/Android/i.test(navigator.userAgent);
   // 2026-10-22: iPhone/iPad (and any touch device with a phone-sized screen) must use the
   // real mobile shell too. Before, only Android did; iOS Safari got the desktop preview's
@@ -8849,7 +8860,7 @@ Respond ONLY with valid JSON, no markdown:
               "About the Authors")
         )
       ),
-      div({style:{position:"absolute",top:screen==="camera"?0:"env(safe-area-inset-top, 24px)",left:0,right:0,
+      div({className:"bcm-screen",style:{position:"absolute",top:screen==="camera"?0:"env(safe-area-inset-top, 24px)",left:0,right:0,
                   bottom:screen==="camera"?0:"calc(78px + env(safe-area-inset-bottom, 0px))",
                   overflowY:"auto"},id:"bcm-scroll"},
           screen==="home"       &&HomeScreen(),
@@ -9268,6 +9279,7 @@ function mountApp(){
   if(typeof React==='undefined'){showError('React Missing','React CDN failed to load. Check internet connection.');return;}
   if(typeof ReactDOM==='undefined'){showError('ReactDOM Missing','ReactDOM CDN failed to load.');return;}
   try{
+    // ── Phase 6i (2026-11-03, night): Home measures itself; only an overflowing column (Galaxy A16) lets the photos shrink to 110 px.
     // ── Phase 6h (2026-11-03, night): "My Shells" card title + photo minimums 120 px (Android home no longer scrolls);
     //    sheet ✕ headers lose the -18 px top margin that pushed them over the first row (Tides chips / Reel intro).
     // ── Phase 6g (2026-11-03, night): tablet hero photos (Sight results, guide detail, Identify preview/result, Collection detail)
